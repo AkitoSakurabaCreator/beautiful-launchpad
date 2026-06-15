@@ -1,7 +1,12 @@
 name: Release
 
 # v* タグ（例: v1.0.0）を push すると、macOS ランナーで .app をビルドし
-# zip 化して GitHub Release に自動添付します。
+# zip 化して GitHub Release に自動添付し、署名済み appcast を公開します。
+#
+# 安全ゲート: 配布不能なビルドを公開しないよう、ビルド前に preflight で
+# 鍵・secret・バージョン整合を検査します（LP-SEC-010 / LP-SEC-011）。
+# 検査を意図的に飛ばしたい test リリースは末尾 "-test" のタグを使うと
+# 失敗を warning に降格します（例: v1.0.1-test）。
 on:
   push:
     tags:
@@ -14,8 +19,59 @@ jobs:
   build-and-release:
     runs-on: macos-14 # Apple Silicon (arm64)
     steps:
+      # actions はサプライチェーン対策で commit SHA ピン（LP-SEC-013）。
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # --- Preflight: リリース可否ゲート（ビルド前に fail-fast）------------------
+      - name: Preflight (release-readiness gate)
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          # Info.plist に同梱されているランダム placeholder（実鍵で置換必須）。
+          SPARKLE_PLACEHOLDER_PUBKEY: "s7WL1oAH0gYAg/0LoXT5taXRy13K9Du6C4NpKahVUnY="
+        run: |
+          set -uo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          TESTMODE=0
+          case "$TAG" in *-test) TESTMODE=1 ;; esac
+
+          PUBKEY="$(plutil -extract SUPublicEDKey raw Info.plist 2>/dev/null || echo '')"
+          SHORTVER="$(plutil -extract CFBundleShortVersionString raw Info.plist 2>/dev/null || echo '')"
+          BUILDVER="$(plutil -extract CFBundleVersion raw Info.plist 2>/dev/null || echo '')"
+
+          problems=0
+          note() {
+            if [ "$TESTMODE" = "1" ]; then echo "::warning::[test tag] $1"; else echo "::error::$1"; problems=$((problems+1)); fi
+          }
+
+          # 1) 公開鍵が placeholder/空でないこと（LP-SEC-010）
+          if [ -z "$PUBKEY" ] || [ "$PUBKEY" = "$SPARKLE_PLACEHOLDER_PUBKEY" ]; then
+            note "SUPublicEDKey is empty or still the random placeholder. Set your real EdDSA public key (see UPDATING.md)."
+          fi
+          # 2) 署名 secret があること（LP-SEC-010）
+          if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
+            note "SPARKLE_ED_PRIVATE_KEY secret is missing; a signed appcast cannot be generated."
+          fi
+          # 3) タグとマーケティングバージョンが一致すること（LP-SEC-011）
+          if [ "$TAG" != "v${SHORTVER}" ]; then
+            note "Tag '$TAG' does not match CFBundleShortVersionString 'v${SHORTVER}'."
+          fi
+          # 4) CFBundleVersion が公開済み appcast の最新版より大きいこと（LP-SEC-011）
+          git fetch --depth=1 origin main >/dev/null 2>&1 || true
+          if git cat-file -e origin/main:appcast.xml 2>/dev/null; then
+            LATEST="$(git show origin/main:appcast.xml \
+              | grep -oE 'sparkle:version="[0-9]+"|<sparkle:version>[0-9]+' \
+              | grep -oE '[0-9]+' | sort -n | tail -1)"
+            if [ -n "$LATEST" ] && [ -n "$BUILDVER" ] && [ "$BUILDVER" -le "$LATEST" ]; then
+              note "CFBundleVersion ($BUILDVER) must be greater than the latest published appcast version ($LATEST)."
+            fi
+          fi
+
+          if [ "$problems" -gt 0 ]; then
+            echo "Preflight failed with $problems problem(s). Fix them, or push a '*-test' tag to override. See UPDATING.md."
+            exit 1
+          fi
+          echo "Preflight OK (tag=$TAG shortVersion=$SHORTVER build=$BUILDVER testmode=$TESTMODE)."
 
       - name: Swift version
         run: swift --version
@@ -24,24 +80,26 @@ jobs:
         run: ./build-app.sh release
 
       - name: Package .app (ditto で署名構造を保持)
-        run: ditto -c -k --keepParent Launchpad.app Launchpad.zip
+        run: ditto -c -k --keepParent "Beautiful Launchpad.app" BeautifulLaunchpad.zip
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" Launchpad.zip \
-            --title "Launchpad ${GITHUB_REF_NAME}" \
+          gh release create "${GITHUB_REF_NAME}" BeautifulLaunchpad.zip \
+            --title "Beautiful Launchpad ${GITHUB_REF_NAME}" \
             --generate-notes
 
       # Sparkle auto-update feed. Signs the zip with the EdDSA private key
       # (GitHub secret SPARKLE_ED_PRIVATE_KEY) and publishes appcast.xml to main,
       # which Info.plist's SUFeedURL points at. See UPDATING.md for one-time setup.
-      # If the secret is absent the release still succeeds; only the feed is skipped.
+      # For "-test" tags without a secret the release still succeeds; feed is skipped.
       - name: Generate & publish appcast (Sparkle)
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
           SPARKLE_VERSION: "2.9.3"
+          # Pin the Sparkle tools tarball by SHA-256 (LP-SEC-013).
+          SPARKLE_SHA256: "74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6"
         run: |
           set -euo pipefail
           if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
@@ -51,11 +109,13 @@ jobs:
 
           curl -fsSL -o sparkle.tar.xz \
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          # Verify the downloaded tooling matches the pinned checksum before executing it.
+          echo "${SPARKLE_SHA256}  sparkle.tar.xz" | shasum -a 256 -c -
           mkdir -p sparkle-tools && tar -xf sparkle.tar.xz -C sparkle-tools
 
           # generate_appcast reads each archive's CFBundleVersion to order updates,
           # and writes appcast.xml into the archives dir (here: updates/).
-          mkdir -p updates && cp Launchpad.zip updates/
+          mkdir -p updates && cp BeautifulLaunchpad.zip updates/
           echo "$SPARKLE_ED_PRIVATE_KEY" | sparkle-tools/bin/generate_appcast \
             --ed-key-file - \
             --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
@@ -71,3 +131,15 @@ jobs:
           git commit -m "chore(release): appcast for ${GITHUB_REF_NAME} [skip ci]" \
             || { echo "appcast unchanged"; exit 0; }
           git push origin HEAD:main
+
+          # LP-SEC-009: warn if the feed is not reachable WITHOUT GitHub auth
+          # (e.g. private repo). Non-blocking: raw.githubusercontent CDN can lag a
+          # few minutes after push, so a transient non-200 here is not fatal.
+          FEED="$(plutil -extract SUFeedURL raw Info.plist)"
+          sleep 5
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 20 "$FEED" || echo 000)"
+          if [ "$CODE" != "200" ]; then
+            echo "::warning::SUFeedURL returned HTTP $CODE unauthenticated ($FEED). If the repo is private, Sparkle clients cannot fetch the feed — make the repo/appcast public, or allow for CDN lag and re-check. (LP-SEC-009)"
+          else
+            echo "Feed reachable unauthenticated (HTTP 200)."
+          fi
