@@ -12,6 +12,7 @@ AppIcon.icns
 
 # Release / Sparkle build artifacts (produced by build-app.sh and CI)
 /Launchpad.zip
+/BeautifulLaunchpad.zip
 /updates/
 /sparkle-tools/
 /sparkle.tar.xz
