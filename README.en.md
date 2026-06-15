@@ -28,6 +28,11 @@ on click.
 - 🎞 **Open/close animation** — smooth fade + zoom on open and close (no abrupt disappearance when closing)
 - 🖥 **Multi-monitor support** — opens on **the screen where the cursor is** at launch time
 - 🎨 **Appearance customization** — background (desktop blur / theme / image / solid color), columns & rows, dimming, icon-label toggle
+- 🧩 **User-defined items** — manually add **apps / scripts & shell commands / URLs** (with an optional custom icon). Add them by right-clicking the background or an icon → "Add Item"
+- 🖱 **Right-click menu** — edit/delete your custom items, **reveal an app in Finder**, or add an item on the spot
+- 🏷 **Color-coded folders** — give a folder a preset tint (9 colors + default)
+- 🌐 **Multilingual** — Japanese / English / follow-system, switchable **live with no relaunch**
+- ⬆️ **Auto-update** — checks automatically at launch (Sparkle); manual check available from the settings panel
 - 📦 **Export / import settings** — write order, folders, and appearance to JSON and **load them on another Mac**
 - ⌨️ **Esc** to (close settings/folder → clear search →) quit; click empty space to quit
 
@@ -96,6 +101,7 @@ swift build        # compile only
 | Click a folder | Open the folder (rename available) |
 | Drag an app **outside the panel** from inside a folder | Remove it from the folder back to the home screen (the "−" button also works) |
 | Drag an app **onto another app** inside a folder | Reorder within the folder |
+| **Right-click** an icon / folder / the background | Context menu (add/edit/delete an item, reveal in Finder, etc.) |
 | ⚙️ button (top-right) / **⌘,** | Open the customization screen |
 | Esc | Close settings/folder → clear search → quit |
 | Click empty space | Quit |
@@ -113,6 +119,13 @@ Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
 - **Dimming**: opacity of the dark overlay on top of the background
 - **Layout**: columns (4–10) and rows (3–8)
 - **Icon labels**: toggle labels ON/OFF
+- **Language**: Japanese / English / follow-system (switches without relaunch)
+- **Update**: toggle automatic check at launch, plus a manual "Check for Updates…"
+
+### Adding items / folder colors
+
+- **Add an item**: **right-click the background or an icon → "Add Item…"** to register an app, a script/shell command, or a URL (a custom icon can be set too). Scripts & commands run through a shell (must be executable).
+- **Folder color**: pick a tint from the color swatches in the open-folder view. The leading "−" swatch resets it to the default (no tint).
 
 ### Migrating to another Mac (export / import)
 
