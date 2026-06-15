@@ -1,0 +1,35 @@
+name: Release
+
+# v* タグ（例: v1.0.0）を push すると、macOS ランナーで .app をビルドし
+# zip 化して GitHub Release に自動添付します。
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14 # Apple Silicon (arm64)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build .app bundle
+        run: ./build-app.sh release
+
+      - name: Package .app (ditto で署名構造を保持)
+        run: ditto -c -k --keepParent Launchpad.app Launchpad.zip
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" Launchpad.zip \
+            --title "Launchpad ${GITHUB_REF_NAME}" \
+            --generate-notes
