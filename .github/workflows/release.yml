@@ -33,3 +33,41 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" Launchpad.zip \
             --title "Launchpad ${GITHUB_REF_NAME}" \
             --generate-notes
+
+      # Sparkle auto-update feed. Signs the zip with the EdDSA private key
+      # (GitHub secret SPARKLE_ED_PRIVATE_KEY) and publishes appcast.xml to main,
+      # which Info.plist's SUFeedURL points at. See UPDATING.md for one-time setup.
+      # If the secret is absent the release still succeeds; only the feed is skipped.
+      - name: Generate & publish appcast (Sparkle)
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          SPARKLE_VERSION: "2.9.3"
+        run: |
+          set -euo pipefail
+          if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
+            echo "::warning::SPARKLE_ED_PRIVATE_KEY not set — skipping appcast (see UPDATING.md)."
+            exit 0
+          fi
+
+          curl -fsSL -o sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p sparkle-tools && tar -xf sparkle.tar.xz -C sparkle-tools
+
+          # generate_appcast reads each archive's CFBundleVersion to order updates,
+          # and writes appcast.xml into the archives dir (here: updates/).
+          mkdir -p updates && cp Launchpad.zip updates/
+          echo "$SPARKLE_ED_PRIVATE_KEY" | sparkle-tools/bin/generate_appcast \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+            updates
+
+          # Publish appcast.xml onto main (untracked updates/ survives the switch).
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main origin/main
+          cp updates/appcast.xml appcast.xml
+          git add appcast.xml
+          git commit -m "chore(release): appcast for ${GITHUB_REF_NAME} [skip ci]" \
+            || { echo "appcast unchanged"; exit 0; }
+          git push origin HEAD:main
