@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Launchpad</string>
+    <string>Beautiful Launchpad</string>
     <key>CFBundleDisplayName</key>
-    <string>Launchpad</string>
+    <string>Beautiful Launchpad</string>
     <key>CFBundleIdentifier</key>
     <string>com.yumuramoto.launchpad</string>
     <key>CFBundleExecutable</key>

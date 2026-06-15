@@ -5,7 +5,8 @@
 #
 set -euo pipefail
 
-APP_NAME="Launchpad"
+APP_NAME="Launchpad"               # SwiftPM product / executable (matches Package.swift target & CFBundleExecutable)
+BUNDLE_NAME="Beautiful Launchpad"  # user-facing .app bundle file name (Finder / Dock)
 CONFIG="${1:-release}"   # pass "debug" for a faster build
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -19,7 +20,7 @@ if [[ ! -f "$BIN_PATH" ]]; then
     exit 1
 fi
 
-APP_DIR="$SCRIPT_DIR/$APP_NAME.app"
+APP_DIR="$SCRIPT_DIR/$BUNDLE_NAME.app"
 echo "==> assembling $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
