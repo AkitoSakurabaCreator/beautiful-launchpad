@@ -10,5 +10,14 @@ DerivedData/
 # Optional embedded icon (local asset)
 AppIcon.icns
 
+# Release / Sparkle build artifacts (produced by build-app.sh and CI)
+/Launchpad.zip
+/updates/
+/sparkle-tools/
+/sparkle.tar.xz
+
+# Local-only icon source variant (not consumed by build-app.sh)
+/icon-original.png
+
 # macOS
 .DS_Store
