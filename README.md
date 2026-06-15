@@ -1,4 +1,6 @@
-# Launchpad（macOS ネイティブの美しいランチャー — 従来デザインも、カスタムデザインも）
+# Beautiful Launchpad（macOS ネイティブの美しいランチャー）
+
+[English](README.en.md) | **日本語**
 
 macOS 26 (Tahoe) で廃止された従来の **Launchpad** を、ただ復活させるだけではありません。
 **従来どおりのクラシックな見た目**にも、**背景・テーマ・レイアウトを自分好みに仕立てたカスタムデザイン**にもできる、
@@ -32,17 +34,17 @@ macOS 26 (Tahoe) で廃止された従来の **Launchpad** を、ただ復活さ
 
 ## ダウンロード（ビルド済みアプリ）
 
-最新のビルド済み `Launchpad.app` は [Releases](../../releases) から入手できます
+最新のビルド済み `Beautiful Launchpad.app` は [Releases](../../releases) から入手できます
 （`v*` タグの push 時に GitHub Actions が自動ビルドして添付します）。
 
-1. Releases から `Launchpad.zip` をダウンロードして解凍
-2. `Launchpad.app` を `/Applications` などへ移動
+1. Releases から `BeautifulLaunchpad.zip` をダウンロードして解凍
+2. `Beautiful Launchpad.app` を `/Applications` などへ移動
 3. **初回のみ**: ローカルビルドの **ad-hoc 署名**かつ未公証のため、ダウンロード版は
    Gatekeeper にブロックされます。次のいずれかで開いてください。
-   - `Launchpad.app` を **右クリック →「開く」** →「開く」を選択（初回のみ）
+   - `Beautiful Launchpad.app` を **右クリック →「開く」** →「開く」を選択（初回のみ）
    - もしくはターミナルで隔離属性を外す:
      ```bash
-     xattr -dr com.apple.quarantine /Applications/Launchpad.app
+     xattr -dr com.apple.quarantine "/Applications/Beautiful Launchpad.app"
      ```
 
 > 自分でビルドした `.app`（下記）はネット経由でないため、この操作は不要です。
@@ -54,17 +56,17 @@ macOS 26 (Tahoe) で廃止された従来の **Launchpad** を、ただ復活さ
 
 ```bash
 # このディレクトリで
-./build-app.sh            # release ビルド → Launchpad.app を生成し ad-hoc 署名
+./build-app.sh            # release ビルド → Beautiful Launchpad.app を生成し ad-hoc 署名
 # もしくは開発用に
 ./build-app.sh debug
 ```
 
-生成物: `./Launchpad.app`
+生成物: `./Beautiful Launchpad.app`
 
 ### 起動
 
 ```bash
-open ./Launchpad.app
+open "./Beautiful Launchpad.app"
 # または Finder でダブルクリック
 ```
 

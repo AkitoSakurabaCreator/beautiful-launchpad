@@ -1,7 +1,8 @@
 # 自動アップデート設定（Sparkle）
 
-Launchpad は [Sparkle](https://sparkle-project.org) で自己アップデートします。署名済みの
-**appcast** フィードを確認し、新しい署名済みビルドがあればダウンロードして適用します。
+Launchpad は [Sparkle](https://sparkle-project.org) で自己アップデートします。**appcast**
+フィードを確認し、新しいビルドがあれば **EdDSA 署名済みの更新アーカイブ（zip）**を
+検証してからダウンロード・適用します。
 
 以下は **一度きりのセットアップ**です。完了後は `vX.Y.Z` タグを push するたびに、
 既存ユーザーへ自動でアップデートが配信されます。
@@ -68,6 +69,11 @@ GitHub の **Settings → Secrets and variables → Actions → New repository s
 
 > ⚠️ `CFBundleVersion` を増やさないと、Sparkle は新しいビルドと見なしません。
 
+> 🛡 **CI 安全ゲート**: ビルド前の preflight が次を検査し、満たさないと **Release 作成前に失敗**します。
+> ① 公開鍵が placeholder でない ② `SPARKLE_ED_PRIVATE_KEY` secret あり ③ タグ == `v{CFBundleShortVersionString}`
+> ④ `CFBundleVersion` が公開済み appcast の最新版より大きい。
+> 検査を意図的に飛ばす試験リリースは末尾 `-test` のタグ（例 `v1.0.1-test`）を使うと失敗が警告に降格します。
+
 ## 注意・制限
 
 - アップデートは **フル更新**（差分なし）。appcast は最新バージョンのエントリを保持します。
@@ -77,6 +83,15 @@ GitHub の **Settings → Secrets and variables → Actions → New repository s
 - CI は **arm64 のみ**ビルド（Apple Silicon）。Intel 対応には universal ビルド化が別途必要。
 - appcast のホスティング代替：`main` の raw URL の代わりに GitHub Pages で `appcast.xml` を
   配信し、`SUFeedURL` をそれに合わせて変更してもかまいません。
+- **署名の範囲**：**更新アーカイブ（zip）は EdDSA 署名**され `SUPublicEDKey` で検証されます。
+  一方 **appcast フィード XML 自体は既定では署名しません**（HTTPS＋ホスト整合性に依存）。
+  appcast を可変ブランチ（`main` の raw）に置くため整合性をさらに固めたい場合は、Sparkle の
+  appcast 署名（`SURequireSignedFeed`）を有効化できます。ただし**リリース工程でフィードを実際に
+  署名し、実リリースで検証してから**有効化してください（未署名フィードのまま有効化すると、
+  更新自体は届くものの critical 指定・informational・リリースノート/リンクが無効な
+  "safe fallback" 動作になります）。
+- **サプライチェーン**：CI は Sparkle ツール tarball を **SHA-256 ピン**で検証し、
+  `actions/checkout` を **commit SHA ピン**で使用します（更新時は SHA も併せて更新）。
 
 ## 構成ファイル
 
