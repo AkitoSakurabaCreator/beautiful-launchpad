@@ -20,6 +20,7 @@ enum LaunchpadMain {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = LaunchpadStore()
+    let updater = UpdaterController()
     private var window: KeyableWindow?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
@@ -52,7 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         win.isMovableByWindowBackground = false
         win.setFrame(frame, display: true)
 
-        let root = LaunchpadView().environmentObject(store)
+        let root = LaunchpadView()
+            .environmentObject(store)
+            .environmentObject(updater)
         let hosting = NSHostingView(rootView: root)
         hosting.frame = NSRect(origin: .zero, size: frame.size)
         hosting.autoresizingMask = [.width, .height]
@@ -122,6 +125,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the `modalWindow` guard is belt-and-suspenders for any modal edge case.
     func applicationDidResignActive(_ notification: Notification) {
         guard NSApp.modalWindow == nil else { return }
+        // Don't dismiss while Sparkle is presenting its own update window, or the
+        // overlay would close underneath it and kill the update flow.
+        guard !updater.isShowingUpdateUI else { return }
         store.requestClose()
     }
 

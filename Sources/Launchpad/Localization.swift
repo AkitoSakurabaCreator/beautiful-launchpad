@@ -22,6 +22,7 @@ enum L {
         case layout, columns, rows, showLabels
         case transferReset, export, importConfig, reset, transferNote
         case language, languageSystem, folderDefaultName
+        case update, updateCheckNow, updateAuto, updateAvailable, currentVersion
         case exportPanelTitle, importPanelTitle, wallpaperPanelTitle
     }
 
@@ -69,6 +70,11 @@ enum L {
         .language:            ("言語", "Language"),
         .languageSystem:      ("システム", "System"),
         .folderDefaultName:   ("フォルダ", "Folder"),
+        .update:              ("アップデート", "Update"),
+        .updateCheckNow:      ("アップデートを確認…", "Check for Updates…"),
+        .updateAuto:          ("起動時に自動で確認", "Check automatically at launch"),
+        .updateAvailable:     ("新しいバージョンがあります", "A new version is available"),
+        .currentVersion:      ("現在のバージョン", "Current version"),
         .exportPanelTitle:    ("Launchpad 設定をエクスポート", "Export Launchpad settings"),
         .importPanelTitle:    ("Launchpad 設定をインポート", "Import Launchpad settings"),
         .wallpaperPanelTitle: ("壁紙画像を選択", "Choose wallpaper image"),

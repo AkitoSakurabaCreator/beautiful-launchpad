@@ -4,6 +4,7 @@ import SwiftUI
 /// grid density, dim, labels, language, plus config export/import.
 struct SettingsView: View {
     @EnvironmentObject var store: LaunchpadStore
+    @EnvironmentObject var updater: UpdaterController
 
     var body: some View {
         ZStack {
@@ -23,6 +24,10 @@ struct SettingsView: View {
                 Divider().overlay(Color.white.opacity(0.2))
 
                 languageSection
+
+                Divider().overlay(Color.white.opacity(0.2))
+
+                updateSection
 
                 Divider().overlay(Color.white.opacity(0.2))
 
@@ -145,6 +150,31 @@ struct SettingsView: View {
         }
     }
 
+    private var updateSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(store.t(.update)).font(.headline)
+            HStack(spacing: 12) {
+                Button { updater.checkForUpdates() } label: {
+                    Label(store.t(.updateCheckNow), systemImage: "arrow.down.circle")
+                }
+                .disabled(!updater.canCheckForUpdates)
+
+                if updater.updateAvailable {
+                    Label(store.t(.updateAvailable), systemImage: "sparkles")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+
+                Spacer()
+
+                Text("\(store.t(.currentVersion)): \(updater.currentVersion)")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.55))
+            }
+            Toggle(store.t(.updateAuto), isOn: bindingAutoUpdate)
+        }
+    }
+
     private var transferSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(store.t(.transferReset)).font(.headline)
@@ -196,5 +226,9 @@ struct SettingsView: View {
     private var bindingLanguage: Binding<AppLanguage> {
         Binding(get: { store.settings.language },
                 set: { v in store.updateSettings { $0.language = v } })
+    }
+    private var bindingAutoUpdate: Binding<Bool> {
+        Binding(get: { updater.automaticallyChecksForUpdates },
+                set: { v in updater.automaticallyChecksForUpdates = v })
     }
 }

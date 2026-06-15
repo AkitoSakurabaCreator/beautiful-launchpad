@@ -28,5 +28,24 @@
     <string>public.app-category.utilities</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 AkitoSakurabaCreator. MIT License.</string>
+
+    <!-- ============================================================
+         Sparkle auto-update. Full setup steps: see UPDATING.md
+         ============================================================ -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/AkitoSakurabaCreator/beautiful-launchpad/main/appcast.xml</string>
+    <!-- ⚠️ REQUIRED — REPLACE BEFORE RELEASING.
+         The value below is a RANDOM PLACEHOLDER, not a real signing key.
+         Run `bin/generate_keys` (see UPDATING.md) and paste the printed
+         public key here. Until you do, downloaded updates fail signature
+         verification (fail-safe: no foreign/unsigned update is ever applied). -->
+    <key>SUPublicEDKey</key>
+    <string>s7WL1oAH0gYAg/0LoXT5taXRy13K9Du6C4NpKahVUnY=</string>
+    <!-- Check for updates automatically (gentle, in-app). User can toggle in Settings. -->
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <!-- Background check cadence in seconds (86400 = once per day). -->
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>
