@@ -44,6 +44,12 @@ jobs:
             if [ "$TESTMODE" = "1" ]; then echo "::warning::[test tag] $1"; else echo "::error::$1"; problems=$((problems+1)); fi
           }
 
+          # 0) CFBundleVersion は正の整数であること（LP-SEC-017。Sparkle は数値で順序付け）。
+          #    不正なら note で fail させ、BUILDVER を空にして後段の数値比較(4)を安全に skip。
+          case "$BUILDVER" in
+            ''|*[!0-9]*) note "CFBundleVersion ('$BUILDVER') must be a positive integer." ; BUILDVER="" ;;
+          esac
+
           # 1) 公開鍵が placeholder/空でないこと（LP-SEC-010）
           if [ -z "$PUBKEY" ] || [ "$PUBKEY" = "$SPARKLE_PLACEHOLDER_PUBKEY" ]; then
             note "SUPublicEDKey is empty or still the random placeholder. Set your real EdDSA public key (see UPDATING.md)."
@@ -102,6 +108,16 @@ jobs:
           SPARKLE_SHA256: "74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6"
         run: |
           set -euo pipefail
+          # LP-SEC-014: a "*-test" tag must NEVER publish to the production appcast
+          # (the trusted update channel for all installed clients). The preflight only
+          # downgrades its OWN failures to warnings for test tags; this step has its own
+          # guard so a signed test build cannot poison the real feed.
+          case "${GITHUB_REF_NAME}" in
+            *-test)
+              echo "::warning::'-test' tag (${GITHUB_REF_NAME}) — skipping production appcast publish (LP-SEC-014)."
+              exit 0
+              ;;
+          esac
           if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
             echo "::warning::SPARKLE_ED_PRIVATE_KEY not set — skipping appcast (see UPDATING.md)."
             exit 0
