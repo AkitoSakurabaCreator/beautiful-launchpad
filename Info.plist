@@ -34,13 +34,11 @@
          ============================================================ -->
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/AkitoSakurabaCreator/beautiful-launchpad/main/appcast.xml</string>
-    <!-- ⚠️ REQUIRED — REPLACE BEFORE RELEASING.
-         The value below is a RANDOM PLACEHOLDER, not a real signing key.
-         Run `bin/generate_keys` (see UPDATING.md) and paste the printed
-         public key here. Until you do, downloaded updates fail signature
-         verification (fail-safe: no foreign/unsigned update is ever applied). -->
+    <!-- EdDSA public key for verifying updates. The matching private key lives
+         only in the maintainer's Keychain and the GitHub Actions secret
+         SPARKLE_ED_PRIVATE_KEY. Updates not signed by it are rejected (fail-safe). -->
     <key>SUPublicEDKey</key>
-    <string>s7WL1oAH0gYAg/0LoXT5taXRy13K9Du6C4NpKahVUnY=</string>
+    <string>FRUFniAzOlpA5yvbihOl0qw3iri263XcQV/gjJfIC7s=</string>
     <!-- Check for updates automatically (gentle, in-app). User can toggle in Settings. -->
     <key>SUEnableAutomaticChecks</key>
     <true/>
