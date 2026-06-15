@@ -37,7 +37,7 @@ macOS 26 (Tahoe) で廃止された従来の **Launchpad** を、ただ復活さ
 最新のビルド済み `Beautiful Launchpad.app` は [Releases](../../releases) から入手できます
 （`v*` タグの push 時に GitHub Actions が自動ビルドして添付します）。
 
-1. Releases から `BeautifulLaunchpad.zip` をダウンロードして解凍
+1. Releases から最新リリースの `.zip` をダウンロードして解凍（資産名はリリースにより異なります）
 2. `Beautiful Launchpad.app` を `/Applications` などへ移動
 3. **初回のみ**: ローカルビルドの **ad-hoc 署名**かつ未公証のため、ダウンロード版は
    Gatekeeper にブロックされます。次のいずれかで開いてください。

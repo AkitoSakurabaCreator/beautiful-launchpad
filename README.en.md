@@ -38,7 +38,7 @@ on click.
 The latest prebuilt `Beautiful Launchpad.app` is available from [Releases](../../releases)
 (GitHub Actions builds and attaches it automatically on `v*` tag push).
 
-1. Download `BeautifulLaunchpad.zip` from Releases and unzip it
+1. Download the latest release `.zip` from Releases and unzip it (the asset name may vary by release)
 2. Move `Beautiful Launchpad.app` to `/Applications` or similar
 3. **First launch only**: because local builds are **ad-hoc signed** and not notarized, the downloaded
    version is blocked by Gatekeeper. Open it with one of the following:
