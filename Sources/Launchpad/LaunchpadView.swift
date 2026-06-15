@@ -50,7 +50,7 @@ struct LaunchpadView: View {
                             .shadow(color: .black.opacity(0.35), radius: 3, x: 0, y: 1)
                     }
                     .buttonStyle(.plain)
-                    .help("カスタマイズ (⌘,)")
+                    .help(store.t(.customizeHelp))
                 }
                 Spacer()
             }
@@ -172,6 +172,7 @@ struct PageGrid: View {
 
 /// Search box pinned at the top centre.
 struct SearchField: View {
+    @EnvironmentObject var store: LaunchpadStore
     @Binding var text: String
     var focused: FocusState<Bool>.Binding
 
@@ -179,7 +180,7 @@ struct SearchField: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.white.opacity(0.7))
-            TextField("検索", text: $text)
+            TextField(store.t(.search), text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .foregroundColor(.white)

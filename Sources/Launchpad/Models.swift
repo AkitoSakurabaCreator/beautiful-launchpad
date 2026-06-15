@@ -43,10 +43,11 @@ struct AppSettings: Codable {
     var rows: Int = 5
     var dim: Double = 0.22
     var showLabels: Bool = true
+    var language: AppLanguage = .system
 
     // Tolerate older/partial files: every field has a default.
     enum CodingKeys: String, CodingKey {
-        case backgroundKind, themeIndex, solidColorHex, wallpaperPath, columns, rows, dim, showLabels
+        case backgroundKind, themeIndex, solidColorHex, wallpaperPath, columns, rows, dim, showLabels, language
     }
 
     init() {}
@@ -61,6 +62,7 @@ struct AppSettings: Codable {
         rows = (try? c.decode(Int.self, forKey: .rows)) ?? 5
         dim = (try? c.decode(Double.self, forKey: .dim)) ?? 0.22
         showLabels = (try? c.decode(Bool.self, forKey: .showLabels)) ?? true
+        language = (try? c.decode(AppLanguage.self, forKey: .language)) ?? .system
     }
 
     /// Clamp every field that feeds grid math (division/modulo) or array indexing

@@ -57,6 +57,9 @@ final class LaunchpadStore: ObservableObject {
     func isApp(_ id: String) -> Bool { appsById[id] != nil }
     func isFolder(_ id: String) -> Bool { folders[id] != nil }
 
+    /// Localized UI string for the current language preference (live-switchable).
+    func t(_ key: L.Key) -> String { L.t(key, settings.language) }
+
     // MARK: - Loading & persistence
 
     func loadAndScan() {
@@ -182,7 +185,7 @@ final class LaunchpadStore: ObservableObject {
 
     func exportConfig() {
         let panel = NSSavePanel()
-        panel.title = "Launchpad 設定をエクスポート"
+        panel.title = t(.exportPanelTitle)
         panel.nameFieldStringValue = "launchpad-config.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -197,7 +200,7 @@ final class LaunchpadStore: ObservableObject {
 
     func importConfig() {
         let panel = NSOpenPanel()
-        panel.title = "Launchpad 設定をインポート"
+        panel.title = t(.importPanelTitle)
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url,
@@ -222,7 +225,7 @@ final class LaunchpadStore: ObservableObject {
 
     func chooseWallpaper() {
         let panel = NSOpenPanel()
-        panel.title = "壁紙画像を選択"
+        panel.title = t(.wallpaperPanelTitle)
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -350,7 +353,7 @@ final class LaunchpadStore: ObservableObject {
 
     // MARK: - Folder mutations
 
-    func defaultFolderName() -> String { "フォルダ" }
+    func defaultFolderName() -> String { t(.folderDefaultName) }
 
     func createFolder(keep targetApp: String, add draggedApp: String) {
         let fid = "folder-" + UUID().uuidString
