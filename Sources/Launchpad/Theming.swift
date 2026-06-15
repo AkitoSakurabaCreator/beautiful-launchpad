@@ -85,10 +85,19 @@ struct BackgroundView: View {
             case .image:
                 if let path = settings.wallpaperPath,
                    let img = NSImage(contentsOfFile: path) {
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .ignoresSafeArea()
+                    // A fill-image MUST be pinned to an exact size. Otherwise the
+                    // overflow inflates the parent ZStack and pushes the Spacer-
+                    // positioned gear button off the top-right of the screen.
+                    // GeometryReader yields the exact container size; framing the
+                    // image to it + clipping guarantees it is never larger.
+                    GeometryReader { geo in
+                        Image(nsImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                    }
+                    .ignoresSafeArea()
                 } else {
                     Theming.gradient(settings.themeIndex).ignoresSafeArea()
                 }
