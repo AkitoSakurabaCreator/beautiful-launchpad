@@ -1,0 +1,14 @@
+# Swift Package Manager / build artifacts
+.build/
+*.app/
+
+# Xcode (in case the project is opened there later)
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# Optional embedded icon (local asset)
+AppIcon.icns
+
+# macOS
+.DS_Store
