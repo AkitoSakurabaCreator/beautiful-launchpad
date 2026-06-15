@@ -11,18 +11,60 @@ struct AppInfo: Identifiable, Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
+/// What a user-added custom item launches.
+enum CustomItemKind: String, Codable, CaseIterable {
+    case app     // an .app bundle (or any path) at an arbitrary location
+    case script  // a script file or a shell command line
+    case url     // a web URL / deep link opened in the default handler
+}
+
+/// A user-created launcher entry that is NOT discovered by the app scanner.
+/// Persisted in the layout so it survives rescans, and synthesised into the
+/// catalogue as an `AppInfo` so the existing grid / folder / drag machinery works.
+/// `id` is `"custom-<uuid>"`.
+struct CustomItem: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var kind: CustomItemKind
+    /// app: file path · script: shell-quoted path or a command line · url: URL string.
+    var target: String
+    /// Optional override icon image, or a file to derive an icon from.
+    var iconPath: String? = nil
+}
+
 /// A user-created folder grouping several apps.
 struct Folder: Identifiable, Codable, Hashable {
     var id: String
     var name: String
     var appIds: [String]
+    /// Optional tint (hex like `#RRGGBB`). `nil` = default translucent white.
+    var colorHex: String? = nil
 }
 
 /// On-disk layout persisted to Application Support so the arrangement survives relaunch.
 struct PersistedLayout: Codable {
-    /// Ordered top-level ids; each is either an app path or a `folder-…` id.
+    /// Ordered top-level ids; each is an app path, a `custom-…` id, or a `folder-…` id.
     var order: [String]
     var folders: [Folder]
+    /// User-added entries (apps/scripts/URLs at arbitrary locations).
+    var customItems: [CustomItem]
+
+    init(order: [String], folders: [Folder], customItems: [CustomItem] = []) {
+        self.order = order
+        self.folders = folders
+        self.customItems = customItems
+    }
+
+    enum CodingKeys: String, CodingKey { case order, folders, customItems }
+
+    // Tolerate older files that predate `customItems` (and partial/hand-edited JSON):
+    // every field falls back to a safe default rather than failing the whole decode.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        order = (try? c.decode([String].self, forKey: .order)) ?? []
+        folders = (try? c.decode([Folder].self, forKey: .folders)) ?? []
+        customItems = (try? c.decode([CustomItem].self, forKey: .customItems)) ?? []
+    }
 }
 
 /// How the full-screen background is drawn.

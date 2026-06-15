@@ -53,7 +53,7 @@ struct FolderIconView: View {
         VStack(spacing: 7) {
             ZStack {
                 RoundedRectangle(cornerRadius: mainCell * 0.24, style: .continuous)
-                    .fill(Color.white.opacity(0.16))
+                    .fill(folder.colorHex.map { Color(hex: $0).opacity(0.55) } ?? Color.white.opacity(0.16))
                     .overlay(
                         RoundedRectangle(cornerRadius: mainCell * 0.24, style: .continuous)
                             .stroke(Color.white.opacity(highlight ? 0.9 : 0.18),

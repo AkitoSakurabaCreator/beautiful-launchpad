@@ -14,6 +14,12 @@ struct FolderOverlayView: View {
         Array(repeating: GridItem(.flexible(), spacing: 24), count: 5)
     }
 
+    /// Preset folder tints (plus a "default" clear option).
+    private let palette: [String] = [
+        "#FF3B30", "#FF9500", "#FFCC00", "#34C759",
+        "#00C7BE", "#0A84FF", "#5E5CE6", "#BF5AF2", "#FF2D55",
+    ]
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.5)
@@ -35,6 +41,8 @@ struct FolderOverlayView: View {
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(maxWidth: 320)
+
+                colorRow
 
                 LazyVGrid(columns: columns, spacing: 26) {
                     ForEach(store.folder(folder.id)?.appIds ?? [], id: \.self) { appId in
@@ -83,5 +91,37 @@ struct FolderOverlayView: View {
             .padding(40)
             .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
+    }
+
+    /// A row of preset folder tints; first swatch clears back to the default.
+    private var colorRow: some View {
+        HStack(spacing: 9) {
+            swatch(nil)
+            ForEach(palette, id: \.self) { swatch($0) }
+        }
+    }
+
+    @ViewBuilder
+    private func swatch(_ hex: String?) -> some View {
+        let current = store.folder(folder.id)?.colorHex
+        let selected = hex == current
+        Circle()
+            .fill(hex.map { Color(hex: $0) } ?? Color.white.opacity(0.18))
+            .frame(width: 22, height: 22)
+            .overlay(
+                Circle().stroke(Color.white.opacity(selected ? 0.95 : 0.3),
+                                lineWidth: selected ? 3 : 1)
+            )
+            .overlay(
+                Group {
+                    if hex == nil {
+                        Image(systemName: "circle.slash")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+            )
+            .help(hex == nil ? store.t(.defaultColor) : store.t(.folderColor))
+            .onTapGesture { store.setFolderColor(folder.id, hex: hex) }
     }
 }

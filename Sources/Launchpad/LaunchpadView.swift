@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 /// Root Launchpad view: frosted background, search field, paged app grid, page dots,
@@ -64,6 +65,11 @@ struct LaunchpadView: View {
             if store.showSettings {
                 SettingsView()
             }
+
+            // Add / edit a custom launcher item (app / script / URL).
+            if store.showItemEditor {
+                AddEditItemView()
+            }
         }
         .onDrop(of: [UTType.text], delegate: RootDropDelegate(store: store))
         .onAppear {
@@ -73,6 +79,7 @@ struct LaunchpadView: View {
         .onChange(of: store.searchText) { _ in store.currentPage = 0 }
         .animation(.easeInOut(duration: 0.2), value: store.openFolderID)
         .animation(.easeInOut(duration: 0.2), value: store.showSettings)
+        .animation(.easeInOut(duration: 0.2), value: store.showItemEditor)
     }
 }
 
@@ -122,6 +129,9 @@ struct PageGrid: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { store.backgroundTap() }
+                .contextMenu {
+                    Button(store.t(.addItem)) { store.beginAddItem() }
+                }
 
             ForEach(Array(items.enumerated()), id: \.element) { idx, id in
                 tileView(for: id)
@@ -152,6 +162,7 @@ struct PageGrid: View {
                 store.beginDrag(id)
                 return NSItemProvider(object: id as NSString)
             }
+            .contextMenu { itemMenu(for: id, app: app) }
         } else if let folder = store.folder(id) {
             FolderIconView(
                 folder: folder,
@@ -164,9 +175,29 @@ struct PageGrid: View {
                 store.beginDrag(id)
                 return NSItemProvider(object: id as NSString)
             }
+            .contextMenu {
+                Button(store.t(.editItem)) { store.openFolderID = id }
+                Divider()
+                Button(store.t(.addItem)) { store.beginAddItem() }
+            }
         } else {
             Color.clear
         }
+    }
+
+    /// Right-click menu for an app / custom-item tile.
+    @ViewBuilder
+    private func itemMenu(for id: String, app: AppInfo) -> some View {
+        if store.isCustom(id) {
+            Button(store.t(.editItem)) { store.beginEditItem(id) }
+            Button(store.t(.deleteItem), role: .destructive) { store.removeCustomItem(id) }
+        } else {
+            Button(store.t(.revealInFinder)) {
+                NSWorkspace.shared.activateFileViewerSelecting([app.url])
+            }
+        }
+        Divider()
+        Button(store.t(.addItem)) { store.beginAddItem() }
     }
 }
 

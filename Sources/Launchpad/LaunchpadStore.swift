@@ -10,6 +10,9 @@ import UniformTypeIdentifiers
 final class LaunchpadStore: ObservableObject {
     // Catalogue
     @Published private(set) var appsById: [String: AppInfo] = [:]
+    /// User-added entries (apps/scripts/URLs). Also synthesised into `appsById`
+    /// so rendering/search/folders work, but launch dispatch keys off this map.
+    @Published private(set) var customById: [String: CustomItem] = [:]
 
     // Layout
     @Published var order: [String] = []          // top-level ids (app path | folder id)
@@ -27,6 +30,10 @@ final class LaunchpadStore: ObservableObject {
     // Appearance / customization
     @Published var settings = AppSettings()
     @Published var showSettings = false
+
+    /// Custom-item add/edit overlay. `editingItemId == nil` while adding a new one.
+    @Published var showItemEditor = false
+    @Published var editingItemId: String? = nil
 
     // Drag state
     @Published var draggingID: String? = nil
@@ -64,12 +71,32 @@ final class LaunchpadStore: ObservableObject {
 
     func loadAndScan() {
         settings = Self.loadSettings() ?? AppSettings()
+        let persisted = Self.loadPersisted()
         let scanned = AppScanner.scan()
         var byId: [String: AppInfo] = [:]
         for a in scanned { byId[a.id] = a }
         appsById = byId
-        reconcile(scanned: scanned, persisted: Self.loadPersisted())
+        mergeCustomIntoCatalogue(persisted?.customItems ?? [])
+        reconcile(scanned: catalogueSorted(), persisted: persisted)
         clampPage()
+    }
+
+    /// Catalogue entries sorted by name (deterministic append order for reconcile).
+    private func catalogueSorted() -> [AppInfo] {
+        appsById.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Register custom items into `customById` and synthesise displayable `AppInfo`s
+    /// into `appsById` (replacing any previous custom set).
+    private func mergeCustomIntoCatalogue(_ items: [CustomItem]) {
+        // Drop stale synthesised entries, then re-add the current set.
+        for id in customById.keys { appsById[id] = nil }
+        var custom: [String: CustomItem] = [:]
+        for c in items {
+            custom[c.id] = c
+            appsById[c.id] = Self.synthAppInfo(for: c)
+        }
+        customById = custom
     }
 
     private func reconcile(scanned: [AppInfo], persisted: PersistedLayout?) {
@@ -140,7 +167,11 @@ final class LaunchpadStore: ObservableObject {
     }
 
     func save() {
-        let payload = PersistedLayout(order: order, folders: Array(folders.values))
+        let payload = PersistedLayout(
+            order: order,
+            folders: Array(folders.values),
+            customItems: Array(customById.values)
+        )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
         }
@@ -190,7 +221,11 @@ final class LaunchpadStore: ObservableObject {
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let bundle = ExportBundle(
-            layout: PersistedLayout(order: order, folders: Array(folders.values)),
+            layout: PersistedLayout(
+                order: order,
+                folders: Array(folders.values),
+                customItems: Array(customById.values)
+            ),
             settings: settings
         )
         if let data = try? JSONEncoder.pretty.encode(bundle) {
@@ -211,6 +246,10 @@ final class LaunchpadStore: ObservableObject {
         // Imported bundles are untrusted input — normalize before use/persist.
         settings = bundle.settings.normalized()
         saveSettings()
+        // Note: imported custom items (esp. `.script`) are NOT executed on import;
+        // they only run when the user clicks them. Their target stays inspectable
+        // in the edit sheet and the right-click menu.
+        mergeCustomIntoCatalogue(bundle.layout.customItems)
         applyImportedLayout(bundle.layout)
         save()
         currentPage = 0
@@ -218,9 +257,7 @@ final class LaunchpadStore: ObservableObject {
     }
 
     private func applyImportedLayout(_ persisted: PersistedLayout) {
-        let scanned = Array(appsById.values)
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        reconcile(scanned: scanned, persisted: persisted)
+        reconcile(scanned: catalogueSorted(), persisted: persisted)
     }
 
     func chooseWallpaper() {
@@ -267,15 +304,186 @@ final class LaunchpadStore: ObservableObject {
 
     // MARK: - Actions
 
-    func launch(_ appId: String) {
-        guard let info = appsById[appId] else { return }
+    func launch(_ id: String) {
+        if let c = customById[id] { launchCustom(c); dismiss(); return }
+        guard let info = appsById[id] else { return }
         NSWorkspace.shared.open(info.url)
         dismiss()
+    }
+
+    private func launchCustom(_ c: CustomItem) {
+        switch c.kind {
+        case .app:
+            NSWorkspace.shared.open(URL(fileURLWithPath: c.target))
+        case .url:
+            if let u = URL(string: c.target.trimmingCharacters(in: .whitespaces)) {
+                NSWorkspace.shared.open(u)
+            } else { NSSound.beep() }
+        case .script:
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            // -l loads the login profile (PATH like the user's terminal); -c runs the
+            // target, which is either a shell-quoted file path or a free command line.
+            task.arguments = ["-lc", c.target]
+            do { try task.run() } catch { NSSound.beep() }
+        }
     }
 
     func launchFirstResult() {
         guard isSearching, let first = searchResults().first else { return }
         launch(first)
+    }
+
+    // MARK: - Custom items (user-added apps / scripts / URLs)
+
+    func isCustom(_ id: String) -> Bool { customById[id] != nil }
+    func customItem(_ id: String) -> CustomItem? { customById[id] }
+
+    /// Shell-quote a path so it can be dropped into a `.script` command line safely.
+    static func shellQuote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    func beginAddItem() { editingItemId = nil; showItemEditor = true }
+    func beginEditItem(_ id: String) {
+        guard isCustom(id) else { return }
+        editingItemId = id
+        showItemEditor = true
+    }
+    func closeItemEditor() { showItemEditor = false; editingItemId = nil }
+
+    @discardableResult
+    func addCustomItem(name: String, kind: CustomItemKind, target: String, iconPath: String?) -> Bool {
+        let t = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = "custom-" + UUID().uuidString
+        let item = CustomItem(
+            id: id,
+            name: trimmedName.isEmpty ? Self.defaultName(kind: kind, target: t) : trimmedName,
+            kind: kind, target: t,
+            iconPath: iconPath?.isEmpty == true ? nil : iconPath
+        )
+        customById[id] = item
+        appsById[id] = Self.synthAppInfo(for: item)
+        order.append(id)
+        clampPage(); save()
+        return true
+    }
+
+    @discardableResult
+    func updateCustomItem(_ id: String, name: String, kind: CustomItemKind, target: String, iconPath: String?) -> Bool {
+        guard isCustom(id) else { return false }
+        let t = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let item = CustomItem(
+            id: id,
+            name: trimmedName.isEmpty ? Self.defaultName(kind: kind, target: t) : trimmedName,
+            kind: kind, target: t,
+            iconPath: iconPath?.isEmpty == true ? nil : iconPath
+        )
+        customById[id] = item
+        appsById[id] = Self.synthAppInfo(for: item)
+        objectWillChange.send()
+        save()
+        return true
+    }
+
+    func removeCustomItem(_ id: String) {
+        guard isCustom(id) else { return }
+        customById[id] = nil
+        appsById[id] = nil
+        order.removeAll { $0 == id }
+        // Pull it out of any folder, dissolving folders that drop below two members.
+        for (fid, var f) in folders where f.appIds.contains(id) {
+            f.appIds.removeAll { $0 == id }
+            if f.appIds.count <= 1 {
+                if let leftover = f.appIds.first, let idx = order.firstIndex(of: fid) {
+                    order[idx] = leftover
+                } else {
+                    order.removeAll { $0 == fid }
+                }
+                folders[fid] = nil
+                if openFolderID == fid { openFolderID = nil }
+            } else {
+                folders[fid] = f
+            }
+        }
+        clampPage(); save()
+    }
+
+    private static func defaultName(kind: CustomItemKind, target: String) -> String {
+        switch kind {
+        case .url:
+            return URL(string: target)?.host ?? target
+        case .app, .script:
+            let last = (target as NSString).lastPathComponent
+            return last.isEmpty ? target : ((last as NSString).deletingPathExtension)
+        }
+    }
+
+    // MARK: - Folder appearance
+
+    func setFolderColor(_ folderId: String, hex: String?) {
+        guard var f = folders[folderId] else { return }
+        f.colorHex = hex
+        folders[folderId] = f
+        save()
+    }
+
+    // MARK: - Custom-item icon / catalogue synthesis
+
+    /// Build a displayable `AppInfo` (icon + name) for a custom item so the grid,
+    /// folders, search, and drag machinery can treat it like any scanned app.
+    static func synthAppInfo(for c: CustomItem) -> AppInfo {
+        let url: URL
+        switch c.kind {
+        case .url: url = URL(string: c.target) ?? URL(fileURLWithPath: "/")
+        default:   url = URL(fileURLWithPath: c.target)
+        }
+        return AppInfo(id: c.id, name: c.name, url: url, icon: customIcon(for: c))
+    }
+
+    private static func customIcon(for c: CustomItem) -> NSImage {
+        if let p = c.iconPath, let img = NSImage(contentsOfFile: p) {
+            img.size = NSSize(width: 128, height: 128)
+            return img
+        }
+        switch c.kind {
+        case .app, .script:
+            // For `.script`, the target may be shell-quoted; strip quotes to probe the path.
+            let raw = c.target.trimmingCharacters(in: CharacterSet(charactersIn: "'\" "))
+            if FileManager.default.fileExists(atPath: raw) {
+                let i = NSWorkspace.shared.icon(forFile: raw)
+                i.size = NSSize(width: 128, height: 128)
+                return i
+            }
+            return symbolImage(c.kind == .app ? "app.dashed" : "terminal")
+        case .url:
+            return symbolImage("safari")
+        }
+    }
+
+    /// Render an SF Symbol into a white-tinted 128×128 bitmap so it reads on the
+    /// dark Launchpad background (template symbols would otherwise draw black).
+    private static func symbolImage(_ name: String) -> NSImage {
+        let size = NSSize(width: 128, height: 128)
+        let out = NSImage(size: size)
+        let cfg = NSImage.SymbolConfiguration(pointSize: 84, weight: .regular)
+        guard let sym = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(cfg) else { return out }
+        out.lockFocus()
+        let r = NSRect(
+            x: (size.width - sym.size.width) / 2,
+            y: (size.height - sym.size.height) / 2,
+            width: sym.size.width, height: sym.size.height
+        )
+        sym.draw(in: r)
+        NSColor.white.set()
+        NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+        out.unlockFocus()
+        return out
     }
 
     func dismiss() { requestClose() }

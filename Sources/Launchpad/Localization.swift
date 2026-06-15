@@ -23,6 +23,10 @@ enum L {
         case transferReset, export, importConfig, reset, transferNote
         case language, languageSystem, folderDefaultName
         case update, updateCheckNow, updateAuto, updateAvailable, currentVersion
+        case addItem, editItem, deleteItem, itemName, itemKind
+        case kindApp, kindScript, kindURL, itemTarget, chooseFile
+        case chooseIcon, clearIcon, save, cancel, revealInFinder
+        case folderColor, defaultColor, scriptHint, urlHint, appHint
         case exportPanelTitle, importPanelTitle, wallpaperPanelTitle
     }
 
@@ -75,6 +79,27 @@ enum L {
         .updateAuto:          ("起動時に自動で確認", "Check automatically at launch"),
         .updateAvailable:     ("新しいバージョンがあります", "A new version is available"),
         .currentVersion:      ("現在のバージョン", "Current version"),
+        .addItem:             ("項目を追加…", "Add Item…"),
+        .editItem:            ("項目を編集", "Edit Item"),
+        .deleteItem:          ("削除", "Delete"),
+        .itemName:            ("名前", "Name"),
+        .itemKind:            ("種類", "Type"),
+        .kindApp:             ("アプリ", "App"),
+        .kindScript:          ("スクリプト / コマンド", "Script / Command"),
+        .kindURL:             ("URL", "URL"),
+        .itemTarget:          ("対象", "Target"),
+        .chooseFile:          ("ファイルを選択…", "Choose File…"),
+        .chooseIcon:          ("アイコンを選択…", "Choose Icon…"),
+        .clearIcon:           ("アイコンをクリア", "Clear icon"),
+        .save:                ("保存", "Save"),
+        .cancel:              ("キャンセル", "Cancel"),
+        .revealInFinder:      ("Finder で表示", "Reveal in Finder"),
+        .folderColor:         ("フォルダの色", "Folder color"),
+        .defaultColor:        ("デフォルト", "Default"),
+        .scriptHint:          ("スクリプトのパス（要実行権限）かシェルコマンドを入力",
+                               "A script path (must be executable) or a shell command"),
+        .urlHint:             ("https://… を入力", "Enter https://…"),
+        .appHint:             (".app やファイルのパスを選択", "Pick an .app or file path"),
         .exportPanelTitle:    ("Launchpad 設定をエクスポート", "Export Launchpad settings"),
         .importPanelTitle:    ("Launchpad 設定をインポート", "Import Launchpad settings"),
         .wallpaperPanelTitle: ("壁紙画像を選択", "Choose wallpaper image"),
