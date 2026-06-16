@@ -20,8 +20,9 @@ jobs:
     runs-on: macos-14 # Apple Silicon (arm64)
     steps:
       # actions はサプライチェーン対策で commit SHA ピン（LP-SEC-013）。
+      # checkout v5 uses the Node24 runtime (Node20 deprecation mitigation).
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       # --- Preflight: リリース可否ゲート（ビルド前に fail-fast）------------------
       - name: Preflight (release-readiness gate)
