@@ -17,11 +17,20 @@ final class LaunchpadStore: ObservableObject {
     // Layout
     @Published var order: [String] = []          // top-level ids (app path | folder id)
     @Published var folders: [String: Folder] = [:]
+    /// Ids the user has hidden (excluded from grid/folders/search; restorable in Settings).
+    @Published var hidden: Set<String> = []
 
     // UI state
     @Published var searchText: String = ""
     @Published var currentPage: Int = 0
-    @Published var openFolderID: String? = nil
+
+    /// Open-folder navigation stack (supports nested folders). The last element is
+    /// the folder currently shown in the overlay; an empty stack means no overlay.
+    @Published var folderPath: [String] = []
+    /// Convenience accessor for the folder currently shown (top of the stack).
+    var openFolderID: String? { folderPath.last }
+    /// Which page of the open folder's contents is visible (folders paginate too).
+    @Published var folderPage: Int = 0
 
     /// Drives the open/close fade + zoom animation (classic Launchpad feel).
     @Published var presented: Bool = false
@@ -35,15 +44,22 @@ final class LaunchpadStore: ObservableObject {
     @Published var showItemEditor = false
     @Published var editingItemId: String? = nil
 
-    // Drag state
+    // Drag state (top-level grid)
     @Published var draggingID: String? = nil
     @Published var dragPreviewOrder: [String]? = nil
     @Published var folderCandidateID: String? = nil
     var isDragging: Bool { draggingID != nil }
 
-    // Folder-internal drag: move an app out of, or reorder within, an open folder.
-    @Published var folderDragApp: String? = nil
-    private var folderDragFolder: String? = nil
+    // Folder-internal drag (reorder within / nest into / move out of the open folder).
+    // Mirrors the top-level model: a single geometry-based drop delegate drives this.
+    @Published var folderDraggingID: String? = nil
+    @Published var folderDragPreview: [String]? = nil
+    @Published var folderMergeCandidateID: String? = nil
+    var isFolderDragging: Bool { folderDraggingID != nil }
+    /// Geometry + container size for the open folder's grid, written by the overlay
+    /// each layout pass and read by the folder drop delegate (non-published).
+    var folderGeo = GridGeometry()
+    var folderAreaSize: CGSize = .zero
 
     /// Called to close/quit the Launchpad (injected by the AppDelegate).
     var onDismiss: (() -> Void)?
@@ -54,6 +70,7 @@ final class LaunchpadStore: ObservableObject {
     var areaSize: CGSize = .zero
 
     private var lastFlip = Date.distantPast
+    private var lastFolderFlip = Date.distantPast
     private var scrollAccum: CGFloat = 0
     private var scrollLatched = false
 
@@ -77,6 +94,8 @@ final class LaunchpadStore: ObservableObject {
         for a in scanned { byId[a.id] = a }
         appsById = byId
         mergeCustomIntoCatalogue(persisted?.customItems ?? [])
+        // Load hidden ids before reconcile so they are excluded from the layout.
+        hidden = Set(persisted?.hidden ?? [])
         reconcile(scanned: catalogueSorted(), persisted: persisted)
         clampPage()
     }
@@ -99,58 +118,121 @@ final class LaunchpadStore: ObservableObject {
         customById = custom
     }
 
+    /// Rebuild `folders` + `order` from the persisted layout, supporting nested
+    /// folders. Folders are a flat dictionary keyed by id; nesting is expressed by a
+    /// folder id appearing inside another folder's `appIds`. Validity is resolved
+    /// bottom-up: a folder survives only with ≥2 valid children (an available app or
+    /// another valid folder); a lone child bubbles up into its parent; cycles and
+    /// stale/duplicate ids are dropped.
     private func reconcile(scanned: [AppInfo], persisted: PersistedLayout?) {
-        let available = Set(scanned.map { $0.id })
-        var newFolders: [String: Folder] = [:]
-        var newOrder: [String] = []
+        // Hidden ids are excluded from the layout entirely (they stay in `appsById`
+        // so Settings can list and restore them, but never get placed in order/folders).
+        let available = Set(scanned.map { $0.id }).subtracting(hidden)
+        var pf: [String: Folder] = [:]
+        for f in persisted?.folders ?? [] { pf[f.id] = f }
+
+        var rebuilt: [String: Folder] = [:]
         var placed = Set<String>()
 
-        if let p = persisted {
-            // Rebuild folders, keeping only apps that still exist.
-            for f in p.folders {
-                let valid = f.appIds.filter { available.contains($0) }
-                if valid.count >= 2 {
-                    newFolders[f.id] = Folder(id: f.id, name: f.name, appIds: valid)
-                    valid.forEach { placed.insert($0) }
-                }
+        // Returns the ids that should appear in place of `id` in its parent:
+        // `[id]` when it stays (app, or folder kept whole), the bubbled children when
+        // a folder dissolves to <2, or `[]` when stale / cyclic / already placed.
+        func resolve(_ id: String, _ ancestors: Set<String>) -> [String] {
+            if placed.contains(id) { return [] }
+            if available.contains(id) { placed.insert(id); return [id] }
+            guard let f = pf[id], !ancestors.contains(id) else { return [] }
+            let anc = ancestors.union([id])
+            var children: [String] = []
+            for child in f.appIds { children.append(contentsOf: resolve(child, anc)) }
+            if children.count >= 2 {
+                rebuilt[id] = Folder(id: id, name: f.name, appIds: children, colorHex: f.colorHex)
+                placed.insert(id)
+                return [id]
             }
-            // Re-apply saved top-level order.
-            for id in p.order {
-                if id.hasPrefix("folder-") {
-                    if newFolders[id] != nil, !placed.contains(id) {
-                        newOrder.append(id)
-                        placed.insert(id)
-                    }
-                } else if available.contains(id), !placed.contains(id) {
-                    newOrder.append(id)
-                    placed.insert(id)
-                }
-            }
-            // A folder that lost members down to a single app dissolves back to that app.
-            for f in p.folders {
-                let valid = f.appIds.filter { available.contains($0) }
-                if valid.count == 1, let only = valid.first, !placed.contains(only) {
-                    newOrder.append(only)
-                    placed.insert(only)
-                }
-            }
-            // Safety net: a rebuilt folder whose id was missing from the saved
-            // `order` (e.g. hand-edited or imported JSON) would otherwise vanish
-            // along with its apps. Re-attach it at the end deterministically.
-            for fid in newFolders.keys.sorted() where !placed.contains(fid) {
-                newOrder.append(fid)
-                placed.insert(fid)
-            }
+            return children   // 0 or 1 leftover bubbles up to the parent
         }
 
-        // Append any newly discovered apps (alphabetical scan order) not yet placed.
+        var newOrder: [String] = []
+        if let p = persisted {
+            for id in p.order { newOrder.append(contentsOf: resolve(id, [])) }
+            // Safety net: rescue any still-valid folder that the saved `order` failed
+            // to reference (hand-edited / imported JSON) so its apps don't vanish.
+            for fid in pf.keys.sorted() { newOrder.append(contentsOf: resolve(fid, [])) }
+        }
+        // Append newly discovered apps (alphabetical scan order) not yet placed.
         for a in scanned where !placed.contains(a.id) {
             newOrder.append(a.id)
             placed.insert(a.id)
         }
 
-        folders = newFolders
+        folders = rebuilt
         order = newOrder
+    }
+
+    // MARK: - Folder tree helpers (nesting-aware)
+
+    /// The folder id that directly contains `childId`, or nil if it lives top-level.
+    private func parentFolder(of childId: String) -> String? {
+        for (fid, f) in folders where f.appIds.contains(childId) { return fid }
+        return nil
+    }
+
+    /// True if `descendantId` appears anywhere in the subtree rooted at `ancestorId`.
+    /// Used to reject cycles before nesting a folder into one of its own descendants.
+    private func folderContains(_ ancestorId: String, _ descendantId: String) -> Bool {
+        guard let f = folders[ancestorId] else { return false }
+        if f.appIds.contains(descendantId) { return true }
+        for child in f.appIds where isFolder(child) {
+            if folderContains(child, descendantId) { return true }
+        }
+        return false
+    }
+
+    /// Enforce folder invariants after any mutation: drop stale children, dissolve
+    /// folders that fell below two members (their lone child takes the folder's slot
+    /// in the parent / top-level), and prune the open-folder navigation path of any
+    /// folder that no longer exists or is no longer reachable. Runs to a fixpoint.
+    func cleanupFolders() {
+        var changed = true
+        while changed {
+            changed = false
+            // 1. Strip children that are neither a live app nor an existing folder.
+            for fid in Array(folders.keys) {
+                guard var f = folders[fid] else { continue }
+                let filtered = f.appIds.filter { isApp($0) || folders[$0] != nil }
+                if filtered != f.appIds { f.appIds = filtered; folders[fid] = f; changed = true }
+            }
+            // 2. Dissolve one undersized folder per pass (bubble its lone child up).
+            if let fid = folders.first(where: { $0.value.appIds.count < 2 })?.key {
+                let lone = folders[fid]?.appIds.first
+                if let parent = parentFolder(of: fid), var p = folders[parent],
+                   let idx = p.appIds.firstIndex(of: fid) {
+                    if let lone { p.appIds[idx] = lone } else { p.appIds.remove(at: idx) }
+                    folders[parent] = p
+                } else if let idx = order.firstIndex(of: fid) {
+                    if let lone { order[idx] = lone } else { order.remove(at: idx) }
+                } else if let lone {
+                    order.append(lone)
+                }
+                folders[fid] = nil
+                changed = true
+            }
+        }
+
+        // Prune the navigation path: each level must still exist and be reachable
+        // (level 0 top-level; deeper levels nested inside the previous level).
+        var validPath: [String] = []
+        for (i, fid) in folderPath.enumerated() {
+            guard folders[fid] != nil else { break }
+            if i == 0 {
+                guard order.contains(fid) else { break }
+            } else {
+                guard let prev = validPath.last, let p = folders[prev],
+                      p.appIds.contains(fid) else { break }
+            }
+            validPath.append(fid)
+        }
+        if validPath != folderPath { folderPath = validPath; folderPage = 0 }
     }
 
     static func supportFileURL() -> URL {
@@ -170,7 +252,8 @@ final class LaunchpadStore: ObservableObject {
         let payload = PersistedLayout(
             order: order,
             folders: Array(folders.values),
-            customItems: Array(customById.values)
+            customItems: Array(customById.values),
+            hidden: Array(hidden)
         )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
@@ -224,7 +307,8 @@ final class LaunchpadStore: ObservableObject {
             layout: PersistedLayout(
                 order: order,
                 folders: Array(folders.values),
-                customItems: Array(customById.values)
+                customItems: Array(customById.values),
+                hidden: Array(hidden)
             ),
             settings: settings
         )
@@ -250,6 +334,7 @@ final class LaunchpadStore: ObservableObject {
         // they only run when the user clicks them. Their target stays inspectable
         // in the edit sheet and the right-click menu.
         mergeCustomIntoCatalogue(bundle.layout.customItems)
+        hidden = Set(bundle.layout.hidden)
         applyImportedLayout(bundle.layout)
         save()
         currentPage = 0
@@ -281,7 +366,7 @@ final class LaunchpadStore: ObservableObject {
     func searchResults() -> [String] {
         let q = searchText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         return appsById.values
-            .filter { $0.name.lowercased().contains(q) }
+            .filter { !hidden.contains($0.id) && $0.name.lowercased().contains(q) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             .map { $0.id }
     }
@@ -395,21 +480,11 @@ final class LaunchpadStore: ObservableObject {
         customById[id] = nil
         appsById[id] = nil
         order.removeAll { $0 == id }
-        // Pull it out of any folder, dissolving folders that drop below two members.
-        for (fid, var f) in folders where f.appIds.contains(id) {
-            f.appIds.removeAll { $0 == id }
-            if f.appIds.count <= 1 {
-                if let leftover = f.appIds.first, let idx = order.firstIndex(of: fid) {
-                    order[idx] = leftover
-                } else {
-                    order.removeAll { $0 == fid }
-                }
-                folders[fid] = nil
-                if openFolderID == fid { openFolderID = nil }
-            } else {
-                folders[fid] = f
-            }
+        // Pull it out of any folder; cleanupFolders dissolves any that fall below two.
+        for fid in Array(folders.keys) where folders[fid]?.appIds.contains(id) == true {
+            folders[fid]?.appIds.removeAll { $0 == id }
         }
+        cleanupFolders()
         clampPage(); save()
     }
 
@@ -421,6 +496,42 @@ final class LaunchpadStore: ObservableObject {
             let last = (target as NSString).lastPathComponent
             return last.isEmpty ? target : ((last as NSString).deletingPathExtension)
         }
+    }
+
+    // MARK: - Hide / unhide
+
+    func isHidden(_ id: String) -> Bool { hidden.contains(id) }
+
+    /// Hide an app / custom item: remove it from the grid and any folder, and remember
+    /// the choice so a rescan won't re-add it. Folders themselves are not hideable.
+    func hide(_ id: String) {
+        guard isApp(id), !isFolder(id), !hidden.contains(id) else { return }
+        hidden.insert(id)
+        order.removeAll { $0 == id }
+        for fid in Array(folders.keys) where folders[fid]?.appIds.contains(id) == true {
+            folders[fid]?.appIds.removeAll { $0 == id }
+        }
+        cleanupFolders()
+        clampPage()
+        save()
+    }
+
+    /// Restore a previously hidden item back onto the top-level grid.
+    func unhide(_ id: String) {
+        guard hidden.contains(id) else { return }
+        hidden.remove(id)
+        // Re-place it on the grid if it still exists and isn't already somewhere.
+        if isApp(id), !order.contains(id), parentFolder(of: id) == nil {
+            order.append(id)
+        }
+        clampPage()
+        save()
+    }
+
+    /// Hidden items that still resolve to a catalogue entry, sorted by name (for Settings).
+    func hiddenItems() -> [AppInfo] {
+        hidden.compactMap { appsById[$0] }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     // MARK: - Folder appearance
@@ -500,23 +611,56 @@ final class LaunchpadStore: ObservableObject {
 
     func escape() {
         if showSettings { showSettings = false; return }
-        if openFolderID != nil { openFolderID = nil; return }
+        if !folderPath.isEmpty { closeFolder(); return }   // pop one nested level
         if isSearching { searchText = ""; currentPage = 0; return }
         dismiss()
     }
 
     func backgroundTap() {
-        if openFolderID != nil { openFolderID = nil; return }
+        if !folderPath.isEmpty { closeAllFolders(); return }
         dismiss()
     }
 
+    // MARK: - Folder navigation (nested-folder aware)
+
+    /// Push a folder onto the navigation stack (open it / drill into a sub-folder).
+    func openFolder(_ id: String) {
+        guard isFolder(id) else { return }
+        folderPath.append(id)
+        folderPage = 0
+    }
+
+    /// Pop one level (back out of a nested folder, or close the top-level folder).
+    func closeFolder() {
+        if !folderPath.isEmpty { folderPath.removeLast() }
+        folderPage = 0
+    }
+
+    /// Close the folder overlay entirely (all nested levels).
+    func closeAllFolders() {
+        folderPath.removeAll()
+        folderPage = 0
+    }
+
     func nextPage() {
+        // When a folder is open, paging targets the folder's contents instead.
+        if !folderPath.isEmpty { folderNextPage(); return }
         let count = pages(geo: geo).count
         if currentPage < count - 1 { currentPage += 1 }
     }
 
     func prevPage() {
+        if !folderPath.isEmpty { folderPrevPage(); return }
         if currentPage > 0 { currentPage -= 1 }
+    }
+
+    func folderNextPage() {
+        let count = folderPages().count
+        if folderPage < count - 1 { folderPage += 1 }
+    }
+
+    func folderPrevPage() {
+        if folderPage > 0 { folderPage -= 1 }
     }
 
     /// Page navigation from scroll/swipe. Flips at most once per physical swipe to
@@ -526,7 +670,9 @@ final class LaunchpadStore: ObservableObject {
                            phase: NSEvent.Phase,
                            momentum: NSEvent.Phase,
                            precise: Bool) {
-        guard !showSettings, openFolderID == nil else { return }
+        guard !showSettings else { return }
+        // When a folder is open, scroll flips the folder's pages (nextPage/prevPage
+        // route there automatically); otherwise it flips the top-level pages.
         // Ignore inertial momentum entirely — it is what produced the extra flip.
         if !momentum.isEmpty { return }
 
@@ -563,50 +709,63 @@ final class LaunchpadStore: ObservableObject {
 
     func defaultFolderName() -> String { t(.folderDefaultName) }
 
-    func createFolder(keep targetApp: String, add draggedApp: String) {
+    /// Wrap two top-level items into a new folder occupying `keepId`'s slot.
+    /// `addId` may itself be a folder (dragging a folder onto an app → nesting).
+    func createFolder(keep keepId: String, add addId: String) {
+        guard keepId != addId else { return }
         let fid = "folder-" + UUID().uuidString
-        folders[fid] = Folder(id: fid, name: defaultFolderName(), appIds: [targetApp, draggedApp])
+        folders[fid] = Folder(id: fid, name: defaultFolderName(), appIds: [keepId, addId])
         var o = order
-        if let idx = o.firstIndex(of: targetApp) {
-            o[idx] = fid
-        } else {
-            o.append(fid)
-        }
-        o.removeAll { $0 == draggedApp }
+        if let idx = o.firstIndex(of: keepId) { o[idx] = fid } else { o.append(fid) }
+        o.removeAll { $0 == addId }
         order = o
+        cleanupFolders(); save()
     }
 
-    func addToFolder(appId: String, folderId: String) {
-        guard var f = folders[folderId] else { return }
-        if !f.appIds.contains(appId) { f.appIds.append(appId) }
+    /// Move a top-level / nested item (app OR folder) into `folderId`. Rejects cycles
+    /// (a folder cannot be nested into one of its own descendants).
+    func addToFolder(child childId: String, folderId: String) {
+        guard var f = folders[folderId], childId != folderId else { return }
+        if isFolder(childId), folderContains(childId, folderId) { return }
+        // Detach from wherever it currently lives (top-level or another folder).
+        order.removeAll { $0 == childId }
+        for fid in Array(folders.keys) where fid != folderId {
+            folders[fid]?.appIds.removeAll { $0 == childId }
+        }
+        if !f.appIds.contains(childId) { f.appIds.append(childId) }
         folders[folderId] = f
-        order.removeAll { $0 == appId }
+        cleanupFolders(); save()
     }
 
-    func removeFromFolder(_ appId: String, _ folderId: String) {
-        guard var f = folders[folderId] else { return }
-        f.appIds.removeAll { $0 == appId }
+    /// Create a new sub-folder *inside the currently open folder* from two of its
+    /// app children (drag one app onto another while a folder is open).
+    func createFolderInsideCurrent(keep keepId: String, add addId: String) {
+        guard let parent = folderPath.last, var pf = folders[parent],
+              keepId != addId, isApp(keepId), isApp(addId) else { return }
+        let fid = "folder-" + UUID().uuidString
+        folders[fid] = Folder(id: fid, name: defaultFolderName(), appIds: [keepId, addId])
+        if let idx = pf.appIds.firstIndex(of: keepId) { pf.appIds[idx] = fid } else { pf.appIds.append(fid) }
+        pf.appIds.removeAll { $0 == addId }
+        folders[parent] = pf
+        cleanupFolders(); clampFolderPage(); save()
+    }
 
-        var o = order
-        if f.appIds.count <= 1 {
-            // Dissolve folder: the lone remaining app takes the folder's slot.
-            let leftover = f.appIds.first
-            if let idx = o.firstIndex(of: folderId) {
-                if let leftover { o[idx] = leftover } else { o.remove(at: idx) }
-            }
-            o.append(appId)
-            folders[folderId] = nil
-            openFolderID = nil
+    /// Pull a child out of `folderId` back to its parent folder (one level up) or to
+    /// the top-level grid, placed right after the folder. cleanupFolders dissolves
+    /// the folder if it falls below two members.
+    func removeFromFolder(_ childId: String, _ folderId: String) {
+        guard folders[folderId] != nil else { return }
+        folders[folderId]?.appIds.removeAll { $0 == childId }
+        if let parent = parentFolder(of: folderId), var pf = folders[parent],
+           let idx = pf.appIds.firstIndex(of: folderId) {
+            pf.appIds.insert(childId, at: min(idx + 1, pf.appIds.count))
+            folders[parent] = pf
+        } else if let idx = order.firstIndex(of: folderId) {
+            order.insert(childId, at: min(idx + 1, order.count))
         } else {
-            folders[folderId] = f
-            if let idx = o.firstIndex(of: folderId) {
-                o.insert(appId, at: min(idx + 1, o.count))
-            } else {
-                o.append(appId)
-            }
+            order.append(childId)
         }
-        order = o
-        save()
+        cleanupFolders(); clampPage(); save()
     }
 
     func renameFolder(_ folderId: String, _ name: String) {
@@ -616,38 +775,147 @@ final class LaunchpadStore: ObservableObject {
         save()
     }
 
-    // MARK: - Folder-internal drag (drag apps out / reorder within an open folder)
+    // MARK: - Folder-internal drag (reorder / nest / move out of the open folder)
 
-    func beginFolderDrag(_ appId: String, folderId: String) {
-        folderDragApp = appId
-        folderDragFolder = folderId
+    /// Children of the open folder, using the live drag preview while reordering.
+    func folderTiles() -> [String] {
+        guard let fid = folderPath.last, let f = folders[fid] else { return [] }
+        if isFolderDragging, let p = folderDragPreview { return p }
+        return f.appIds
     }
 
-    func endFolderDrag() {
-        folderDragApp = nil
-        folderDragFolder = nil
+    /// The open folder's children split into pages (folders paginate like the grid).
+    func folderPages() -> [[String]] { chunk(folderTiles(), folderGeo.pageSize) }
+
+    func clampFolderPage() {
+        let count = max(1, folderPages().count)
+        folderPage = min(max(0, folderPage), count - 1)
     }
 
-    /// Dropped outside the folder panel → pull the app back to the top-level grid.
-    func dropFolderAppOut() {
-        guard let appId = folderDragApp, let fid = folderDragFolder else { return }
-        removeFromFolder(appId, fid)
-        endFolderDrag()
+    func beginFolderDrag(_ id: String) {
+        guard !isSearching, let fid = folderPath.last, let f = folders[fid] else { return }
+        folderDraggingID = id
+        folderDragPreview = f.appIds
+        folderMergeCandidateID = nil
     }
 
-    /// Reorder within the same folder by inserting before the target app.
-    func reorderInFolder(before targetId: String) {
-        defer { endFolderDrag() }
-        guard let appId = folderDragApp, let fid = folderDragFolder,
-              var f = folders[fid], appId != targetId else { return }
-        f.appIds.removeAll { $0 == appId }
-        if let idx = f.appIds.firstIndex(of: targetId) {
-            f.appIds.insert(appId, at: idx)
-        } else {
-            f.appIds.append(appId)
+    private func endFolderDragReset() {
+        folderDraggingID = nil
+        folderDragPreview = nil
+        folderMergeCandidateID = nil
+    }
+
+    func cancelFolderDrag() { endFolderDragReset() }
+
+    /// Reorder / nest preview from the pointer location (open-folder card space).
+    func updateFolderDragPreview(point: CGPoint, containerSize: CGSize) {
+        guard let dragging = folderDraggingID, let fid = folderPath.last,
+              let f = folders[fid] else { return }
+
+        // Edge zones flip folder pages mid-drag (drag an item to the next page).
+        let edge: CGFloat = 52
+        if point.x < edge {
+            flipFolder(next: false)
+        } else if point.x > containerSize.width - edge {
+            flipFolder(next: true)
         }
-        folders[fid] = f
-        save()
+
+        let g = folderGeo
+        let working = f.appIds.filter { $0 != dragging }
+        let size = g.pageSize
+        let pagesW = chunk(working, size)
+        let page = min(max(0, folderPage), max(0, pagesW.count - 1))
+        let pageItems = pagesW.indices.contains(page) ? pagesW[page] : []
+
+        let stepX = g.cellWidth + g.hSpacing
+        let stepY = g.cellHeight + g.vSpacing
+        var col = Int(floor((point.x - g.leftPad) / max(1, stepX)))
+        var row = Int(floor((point.y - g.topPad) / max(1, stepY)))
+        col = min(max(col, 0), g.columns - 1)
+        row = min(max(row, 0), g.rows - 1)
+        let cellIndex = row * g.columns + col
+
+        // Merge candidate: hovering the centre of another child.
+        if cellIndex < pageItems.count {
+            let hoveredId = pageItems[cellIndex]
+            if hoveredId != dragging {
+                let cellLeft = g.leftPad + CGFloat(col) * stepX
+                let cellTop = g.topPad + CGFloat(row) * stepY
+                let innerMX = g.cellWidth * 0.225
+                let innerMY = g.cellHeight * 0.225
+                let inInner =
+                    point.x >= cellLeft + innerMX && point.x <= cellLeft + g.cellWidth - innerMX &&
+                    point.y >= cellTop + innerMY && point.y <= cellTop + g.cellHeight - innerMY
+                let canMerge: Bool
+                if isApp(dragging) {
+                    canMerge = isApp(hoveredId) || isFolder(hoveredId)       // new sub-folder / nest deeper
+                } else if isFolder(dragging) {
+                    canMerge = isFolder(hoveredId) && !folderContains(dragging, hoveredId)
+                } else {
+                    canMerge = false
+                }
+                if inInner && canMerge {
+                    folderMergeCandidateID = hoveredId
+                    folderDragPreview = f.appIds
+                    return
+                }
+            }
+        }
+
+        // Otherwise reorder: compute the insertion index within the page.
+        folderMergeCandidateID = nil
+        var localInsert = cellIndex
+        let cellLeft = g.leftPad + CGFloat(col) * stepX
+        if point.x > cellLeft + g.cellWidth / 2 { localInsert = cellIndex + 1 }
+        localInsert = min(localInsert, pageItems.count)
+        let globalInsert = min(page * size + localInsert, working.count)
+
+        var preview = working
+        preview.insert(dragging, at: globalInsert)
+        folderDragPreview = preview
+    }
+
+    /// Drop landed inside the open folder card → reorder, or nest into a child.
+    func commitFolderDrop() {
+        defer { endFolderDragReset(); clampFolderPage() }
+        guard let dragging = folderDraggingID, let parent = folderPath.last,
+              var pf = folders[parent] else { return }
+
+        if let target = folderMergeCandidateID, target != dragging {
+            if isFolder(target) {
+                addToFolder(child: dragging, folderId: target)   // nest into a child folder
+                return
+            } else if isApp(target), isApp(dragging) {
+                createFolderInsideCurrent(keep: target, add: dragging)
+                return
+            }
+        }
+        if let preview = folderDragPreview {
+            pf.appIds = preview
+            folders[parent] = pf
+        }
+        cleanupFolders(); save()
+    }
+
+    /// Drop landed outside the open folder card → move the child up one level
+    /// (into the parent folder, or to the top-level grid).
+    func moveFolderChildOut() {
+        defer { endFolderDragReset() }
+        guard let dragging = folderDraggingID, let current = folderPath.last,
+              folders[current] != nil else { return }
+        removeFromFolder(dragging, current)
+    }
+
+    private func flipFolder(next: Bool) {
+        let now = Date()
+        guard now.timeIntervalSince(lastFolderFlip) > 0.6 else { return }
+        guard let fid = folderPath.last, let f = folders[fid] else { return }
+        let count = chunk(f.appIds, folderGeo.pageSize).count
+        if next {
+            if folderPage < count - 1 { folderPage += 1; lastFolderFlip = now }
+        } else {
+            if folderPage > 0 { folderPage -= 1; lastFolderFlip = now }
+        }
     }
 
     // MARK: - Drag & drop
@@ -704,8 +972,16 @@ final class LaunchpadStore: ObservableObject {
                 let inInner =
                     point.x >= cellLeft + innerMX && point.x <= cellLeft + g.cellWidth - innerMX &&
                     point.y >= cellTop + innerMY && point.y <= cellTop + g.cellHeight - innerMY
-                // App can merge into app (create) or into folder (add). Folders only reorder.
-                let canMerge = isApp(dragging) && (isApp(hoveredId) || isFolder(hoveredId))
+                // App → app (create folder) / app → folder (add) / folder → folder
+                // (nest). A folder dropped on a plain app just reorders.
+                let canMerge: Bool
+                if isApp(dragging) {
+                    canMerge = isApp(hoveredId) || isFolder(hoveredId)
+                } else if isFolder(dragging) {
+                    canMerge = isFolder(hoveredId) && !folderContains(dragging, hoveredId)
+                } else {
+                    canMerge = false
+                }
                 if inInner && canMerge {
                     folderCandidateID = hoveredId
                     dragPreviewOrder = order
@@ -731,10 +1007,10 @@ final class LaunchpadStore: ObservableObject {
         guard let dragging = draggingID else { endDragReset(); return }
 
         if let target = folderCandidateID, target != dragging {
-            if isApp(dragging) && isApp(target) {
+            if isFolder(target) {
+                addToFolder(child: dragging, folderId: target)   // app or folder → folder
+            } else if isApp(target), isApp(dragging) {
                 createFolder(keep: target, add: dragging)
-            } else if isApp(dragging), isFolder(target) {
-                addToFolder(appId: dragging, folderId: target)
             } else if let preview = dragPreviewOrder {
                 order = preview
             }

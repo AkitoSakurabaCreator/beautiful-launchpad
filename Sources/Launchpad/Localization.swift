@@ -28,6 +28,8 @@ enum L {
         case chooseIcon, clearIcon, save, cancel, revealInFinder
         case folderColor, defaultColor, scriptHint, urlHint, appHint
         case exportPanelTitle, importPanelTitle, wallpaperPanelTitle
+        case back
+        case hide, show, hiddenItems, hiddenItemsNote, restoreAll
     }
 
     /// Resolve the concrete language from the user's choice and the OS locale.
@@ -103,5 +105,12 @@ enum L {
         .exportPanelTitle:    ("Launchpad 設定をエクスポート", "Export Launchpad settings"),
         .importPanelTitle:    ("Launchpad 設定をインポート", "Import Launchpad settings"),
         .wallpaperPanelTitle: ("壁紙画像を選択", "Choose wallpaper image"),
+        .back:                ("戻る", "Back"),
+        .hide:                ("非表示にする", "Hide"),
+        .show:                ("表示", "Show"),
+        .hiddenItems:         ("非表示の項目", "Hidden Items"),
+        .hiddenItemsNote:     ("右クリックメニューで非表示にした項目です。「表示」で元に戻せます。",
+                               "Items you hid via the right-click menu. Tap “Show” to restore them."),
+        .restoreAll:          ("すべて表示", "Show All"),
     ]
 }

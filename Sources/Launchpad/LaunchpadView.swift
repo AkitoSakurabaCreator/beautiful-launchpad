@@ -170,13 +170,13 @@ struct PageGrid: View {
                 highlight: store.folderCandidateID == id,
                 showLabel: store.settings.showLabels
             )
-            .onTapGesture { if !store.isDragging { store.openFolderID = id } }
+            .onTapGesture { if !store.isDragging { store.openFolder(id) } }
             .onDrag {
                 store.beginDrag(id)
                 return NSItemProvider(object: id as NSString)
             }
             .contextMenu {
-                Button(store.t(.editItem)) { store.openFolderID = id }
+                Button(store.t(.editItem)) { store.openFolder(id) }
                 Divider()
                 Button(store.t(.addItem)) { store.beginAddItem() }
             }
@@ -196,6 +196,7 @@ struct PageGrid: View {
                 NSWorkspace.shared.activateFileViewerSelecting([app.url])
             }
         }
+        Button(store.t(.hide)) { store.hide(id) }
         Divider()
         Button(store.t(.addItem)) { store.beginAddItem() }
     }

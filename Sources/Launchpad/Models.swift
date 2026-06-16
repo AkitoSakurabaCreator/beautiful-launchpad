@@ -48,22 +48,27 @@ struct PersistedLayout: Codable {
     var folders: [Folder]
     /// User-added entries (apps/scripts/URLs at arbitrary locations).
     var customItems: [CustomItem]
+    /// Ids the user chose to hide. Kept here (not just dropped) so a hidden app is
+    /// not re-added on the next scan, and can be restored from Settings.
+    var hidden: [String]
 
-    init(order: [String], folders: [Folder], customItems: [CustomItem] = []) {
+    init(order: [String], folders: [Folder], customItems: [CustomItem] = [], hidden: [String] = []) {
         self.order = order
         self.folders = folders
         self.customItems = customItems
+        self.hidden = hidden
     }
 
-    enum CodingKeys: String, CodingKey { case order, folders, customItems }
+    enum CodingKeys: String, CodingKey { case order, folders, customItems, hidden }
 
-    // Tolerate older files that predate `customItems` (and partial/hand-edited JSON):
-    // every field falls back to a safe default rather than failing the whole decode.
+    // Tolerate older files that predate `customItems` / `hidden` (and partial/hand-edited
+    // JSON): every field falls back to a safe default rather than failing the whole decode.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         order = (try? c.decode([String].self, forKey: .order)) ?? []
         folders = (try? c.decode([Folder].self, forKey: .folders)) ?? []
         customItems = (try? c.decode([CustomItem].self, forKey: .customItems)) ?? []
+        hidden = (try? c.decode([String].self, forKey: .hidden)) ?? []
     }
 }
 

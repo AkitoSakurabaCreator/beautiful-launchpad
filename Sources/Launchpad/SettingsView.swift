@@ -29,6 +29,11 @@ struct SettingsView: View {
 
                 updateSection
 
+                if !store.hiddenItems().isEmpty {
+                    Divider().overlay(Color.white.opacity(0.2))
+                    hiddenSection
+                }
+
                 Divider().overlay(Color.white.opacity(0.2))
 
                 transferSection
@@ -191,6 +196,53 @@ struct SettingsView: View {
                 }
             }
             Text(store.t(.transferNote))
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var hiddenSection: some View {
+        let items = store.hiddenItems()
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(store.t(.hiddenItems)).font(.headline)
+                Text("\(items.count)")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.55))
+                Spacer()
+                Button(store.t(.restoreAll)) {
+                    for item in items { store.unhide(item.id) }
+                }
+                .font(.caption)
+            }
+
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(items) { item in
+                        HStack(spacing: 10) {
+                            Image(nsImage: item.icon)
+                                .resizable()
+                                .interpolation(.high)
+                                .frame(width: 26, height: 26)
+                            Text(item.name)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button(store.t(.show)) { store.unhide(item.id) }
+                        }
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                    }
+                }
+            }
+            .frame(maxHeight: 168)
+
+            Text(store.t(.hiddenItemsNote))
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)

@@ -45,7 +45,9 @@ struct FolderIconView: View {
     var showLabel: Bool = true
 
     var body: some View {
-        let mini = folder.appIds.prefix(9).compactMap { store.app($0) }
+        // Up to 9 child ids for the mini preview; a child may be an app or a
+        // nested folder (shown as a small tinted tile rather than an icon).
+        let mini = Array(folder.appIds.prefix(9))
         let pad = iconSize * 0.13
         let gap = iconSize * 0.06
         let mainCell = iconSize * 0.92
@@ -67,10 +69,19 @@ struct FolderIconView: View {
                             ForEach(0..<3, id: \.self) { c in
                                 let idx = r * 3 + c
                                 if idx < mini.count {
-                                    Image(nsImage: mini[idx].icon)
-                                        .resizable()
-                                        .interpolation(.high)
-                                        .aspectRatio(contentMode: .fit)
+                                    let cid = mini[idx]
+                                    if let app = store.app(cid) {
+                                        Image(nsImage: app.icon)
+                                            .resizable()
+                                            .interpolation(.high)
+                                            .aspectRatio(contentMode: .fit)
+                                    } else if store.isFolder(cid) {
+                                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                            .fill(Color.white.opacity(0.35))
+                                            .aspectRatio(1, contentMode: .fit)
+                                    } else {
+                                        Color.clear
+                                    }
                                 } else {
                                     Color.clear
                                 }
