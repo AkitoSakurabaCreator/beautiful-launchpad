@@ -22,6 +22,10 @@ on click.
 - 📄 **Multiple pages + page dots** — move by scroll / ←→ keys / clicking a dot
 - 📁 **Folders** — create by dragging an app onto the **center** of another app, add by dragging into a folder,
   open as an overlay to launch, rename, or remove
+- 📂 **Nested folders (sub-folders)** — inside an open folder, drag an item onto the **center** of another item
+  to create / enter a sub-folder; tap to drill in and use the **‹ back** button to go up one level
+- 📑 **Paginated folders** — folder contents automatically split across multiple pages as they grow
+  (page dots + drag to the left/right edge to flip); the card stays a fixed size regardless of item count
 - ✋ **Drag to reorder** — drop near the **edge** of an icon to reorder; page flips at the page edge
 - 💾 **Persistent layout** — saves order and folders to `~/Library/Application Support/Launchpad/layout.json`
 - 🚀 **Click to actually launch** → Launchpad closes automatically after launching
@@ -29,7 +33,9 @@ on click.
 - 🖥 **Multi-monitor support** — opens on **the screen where the cursor is** at launch time
 - 🎨 **Appearance customization** — background (desktop blur / theme / image / solid color), columns & rows, dimming, icon-label toggle
 - 🧩 **User-defined items** — manually add **apps / scripts & shell commands / URLs** (with an optional custom icon). Add them by right-clicking the background or an icon → "Add Item"
-- 🖱 **Right-click menu** — edit/delete your custom items, **reveal an app in Finder**, or add an item on the spot
+- 🖱 **Right-click menu** — edit/delete your custom items, **reveal an app in Finder**, **hide an item**, or add one on the spot
+- 🙈 **Hide / show items** — right-click → "**Hide**" to take an app or custom item out of the grid and search
+  (it won't reappear after a rescan); restore it anytime from the **"Hidden Items"** section in Settings via "Show" / "Show All"
 - 🏷 **Color-coded folders** — give a folder a preset tint (9 colors + default)
 - 🌐 **Multilingual** — Japanese / English / follow-system, switchable **live with no relaunch**
 - ⬆️ **Auto-update** — checks automatically at launch (Sparkle); manual check available from the settings panel
@@ -99,9 +105,12 @@ swift build        # compile only
 | Drag an icon (to an edge) | Reorder. Flips the page at the screen edge |
 | Drag an icon onto the center of another icon | Create a folder / add to a folder |
 | Click a folder | Open the folder (rename available) |
-| Drag an app **outside the panel** from inside a folder | Remove it from the folder back to the home screen (the "−" button also works) |
-| Drag an app **onto another app** inside a folder | Reorder within the folder |
-| **Right-click** an icon / folder / the background | Context menu (add/edit/delete an item, reveal in Finder, etc.) |
+| Drag an item **onto the center of another item** inside a folder | Create a sub-folder / move it into one (nesting) |
+| Drag an item **elsewhere** inside a folder | Reorder within the folder |
+| Drag an item **to the left/right edge** inside a folder | Flip the folder page |
+| Drag an item **outside the card (dark backdrop)** from inside a folder | Move it out, up one level (the "−" button also works) |
+| Tap a sub-folder / **‹ back** | Drill into it / go up one level |
+| **Right-click** an icon / folder / the background | Context menu (add/edit/delete an item, reveal in Finder, **hide an item**, etc.) |
 | ⚙️ button (top-right) / **⌘,** | Open the customization screen |
 | Esc | Close settings/folder → clear search → quit |
 | Click empty space | Quit |
@@ -126,6 +135,12 @@ Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
 
 - **Add an item**: **right-click the background or an icon → "Add Item…"** to register an app, a script/shell command, or a URL (a custom icon can be set too). Scripts & commands run through a shell (must be executable).
 - **Folder color**: pick a tint from the color swatches in the open-folder view. The leading "−" swatch resets it to the default (no tint).
+
+### Hiding / restoring items
+
+- **Hide**: **right-click an app or custom item → "Hide"** to take it out of the grid, folders, and search. Hidden items are not re-added on a rescan (folders themselves can't be hidden).
+- **Restore**: a **"Hidden Items"** section appears in the customization screen only when something is hidden. Bring items back with **"Show"** per item, or **"Show All"** at once.
+- The hidden selection is saved in `layout.json`, so it persists across app restarts.
 
 ### Migrating to another Mac (export / import)
 
@@ -154,13 +169,18 @@ LaunchPad/
 └── Sources/Launchpad/
     ├── LaunchpadApp.swift        # @main / AppDelegate / full-screen window / key & scroll monitoring
     ├── Support.swift             # GridGeometry / VisualEffectView / chunk
-    ├── Models.swift              # AppInfo / Folder / persistence models
+    ├── Models.swift              # AppInfo / Folder / CustomItem / persistence models (order, folders, customItems, hidden)
     ├── AppScanner.swift          # installed-app scanning + icon retrieval
-    ├── LaunchpadStore.swift      # state management / paging / search / D&D / folders / persistence
-    ├── LaunchpadView.swift       # root / pager / grid / search / dots
-    ├── IconViews.swift           # app/folder tile rendering
-    ├── FolderViews.swift         # folder overlay
-    └── DragDrop.swift            # DropDelegate (center = folder / edge = reorder detection)
+    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / persistence
+    ├── LaunchpadView.swift       # root / pager / grid / search / dots / right-click menu
+    ├── IconViews.swift           # app/folder tile rendering (folder mini-preview)
+    ├── FolderViews.swift         # folder overlay (nesting, pagination, color)
+    ├── DragDrop.swift            # DropDelegate (center = folder / edge = reorder & page-flip)
+    ├── CustomItems.swift         # add/edit overlay for user items (app / script / URL)
+    ├── SettingsView.swift        # customization screen (background, layout, language, update, hidden items, export/import)
+    ├── Theming.swift             # background rendering (desktop blur / theme / image / solid)
+    ├── Localization.swift        # in-code i18n table (Japanese / English / follow-system, live switch)
+    └── Updater.swift             # Sparkle auto-update (dismiss guard for the full-screen overlay)
 ```
 
 ---
