@@ -41,6 +41,7 @@ enum L {
         case chooseSound, clearSound, customSound, videoSound, newPage, volume
         case addWidget, widgetClock, widgetDate, widgetNotes, widgetBattery, widgetSystem, widgetWeather
         case widgetImage, widgetVideo, widgetTransparent, widgetShowWindow, mute, lock, unlock
+        case presets, presetName, savePreset, apply, presetUpdate, presetsNote
     }
 
     /// Resolve the concrete language from the user's choice and the OS locale.
@@ -183,5 +184,12 @@ enum L {
         .mute:                ("ミュート", "Mute"),
         .lock:                ("ロック", "Lock"),
         .unlock:              ("ロック解除", "Unlock"),
+        .presets:             ("プリセット", "Presets"),
+        .presetName:          ("プリセット名", "Preset name"),
+        .savePreset:          ("現在の設定を保存", "Save current"),
+        .apply:               ("適用", "Apply"),
+        .presetUpdate:        ("更新", "Update"),
+        .presetsNote:         ("現在の設定（配置・ウィジェット・外観）を名前を付けて保存し、ワンクリックで切り替えできます。",
+                               "Save the current setup (layout, widgets, appearance) by name and switch with one click."),
     ]
 }

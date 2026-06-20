@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: LaunchpadStore
     @EnvironmentObject var updater: UpdaterController
+    @State private var newPresetName = ""
 
     var body: some View {
         ZStack {
@@ -41,6 +42,8 @@ struct SettingsView: View {
                                 sectionDivider
                                 hiddenSection
                             }
+                            sectionDivider
+                            presetsSection
                             sectionDivider
                             transferSection
                         }
@@ -324,6 +327,56 @@ struct SettingsView: View {
                     .foregroundColor(.white.opacity(0.55))
             }
             Toggle(store.t(.updateAuto), isOn: bindingAutoUpdate)
+        }
+    }
+
+    private var presetsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(store.t(.presets)).font(.headline)
+
+            // Save the current configuration as a new named preset.
+            HStack(spacing: 8) {
+                TextField(store.t(.presetName), text: $newPresetName)
+                    .textFieldStyle(.roundedBorder)
+                Button(store.t(.savePreset)) {
+                    if store.saveCurrentAsPreset(name: newPresetName) { newPresetName = "" }
+                }
+                .disabled(newPresetName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
+            if !store.presets.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(store.presets) { preset in
+                        HStack(spacing: 8) {
+                            TextField("", text: Binding(
+                                get: { preset.name },
+                                set: { store.renamePreset(preset.id, $0) }
+                            ))
+                            .textFieldStyle(.plain)
+                            .lineLimit(1)
+                            Spacer()
+                            Button(store.t(.apply)) { store.applyPreset(preset.id) }
+                            Button(store.t(.presetUpdate)) { store.updatePreset(preset.id) }
+                                .font(.caption)
+                            Button(role: .destructive) { store.deletePreset(preset.id) } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.white.opacity(0.7))
+                        }
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                    }
+                }
+            }
+
+            Text(store.t(.presetsNote))
+                .font(.caption).foregroundColor(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -334,3 +334,11 @@ struct ExportBundle: Codable {
     var layout: PersistedLayout
     var settings: AppSettings
 }
+
+/// A named, in-app snapshot of the whole configuration (same content as an export),
+/// so the user can switch setups without juggling files. `id` is `"preset-<uuid>"`.
+struct Preset: Identifiable, Codable {
+    var id: String
+    var name: String
+    var bundle: ExportBundle
+}

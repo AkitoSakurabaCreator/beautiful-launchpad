@@ -54,6 +54,8 @@ final class LaunchpadStore: ObservableObject {
     @Published var showSettings = false
     /// First-run onboarding / permissions dialog.
     @Published var showOnboarding = false
+    /// Named in-app configuration snapshots (managed in Settings, no files needed).
+    @Published var presets: [Preset] = []
 
     /// Custom-item add/edit overlay. `editingItemId == nil` while adding a new one.
     @Published var showItemEditor = false
@@ -116,8 +118,60 @@ final class LaunchpadStore: ObservableObject {
         reconcile(scanned: catalogueSorted(), persisted: persisted)
         sanitizeFreePlacement()
         clampPage()
+        presets = Self.loadPresets()
         // Show the first-run onboarding / permissions dialog once.
         showOnboarding = !settings.onboardingShown
+    }
+
+    // MARK: - Presets (in-app config snapshots)
+
+    static func presetsFileURL() -> URL {
+        supportFileURL().deletingLastPathComponent().appendingPathComponent("presets.json")
+    }
+
+    static func loadPresets() -> [Preset] {
+        guard let data = try? Data(contentsOf: presetsFileURL()) else { return [] }
+        return (try? JSONDecoder().decode([Preset].self, from: data)) ?? []
+    }
+
+    private func savePresets() {
+        if let data = try? JSONEncoder().encode(presets) {
+            try? data.write(to: Self.presetsFileURL(), options: .atomic)
+        }
+    }
+
+    /// Save the current configuration as a new named preset.
+    @discardableResult
+    func saveCurrentAsPreset(name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        presets.append(Preset(id: "preset-" + UUID().uuidString, name: trimmed, bundle: currentBundle()))
+        savePresets()
+        return true
+    }
+
+    /// Apply a saved preset to the live configuration.
+    func applyPreset(_ id: String) {
+        guard let p = presets.first(where: { $0.id == id }) else { return }
+        applyBundle(p.bundle)
+    }
+
+    /// Overwrite a preset's snapshot with the current configuration.
+    func updatePreset(_ id: String) {
+        guard let i = presets.firstIndex(where: { $0.id == id }) else { return }
+        presets[i].bundle = currentBundle()
+        savePresets()
+    }
+
+    func renamePreset(_ id: String, _ name: String) {
+        guard let i = presets.firstIndex(where: { $0.id == id }) else { return }
+        presets[i].name = name
+        savePresets()
+    }
+
+    func deletePreset(_ id: String) {
+        presets.removeAll { $0.id == id }
+        savePresets()
     }
 
     /// Number of apps/items currently in the catalogue (shown in onboarding).
@@ -341,7 +395,14 @@ final class LaunchpadStore: ObservableObject {
         panel.nameFieldStringValue = "launchpad-config.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let bundle = ExportBundle(
+        if let data = try? JSONEncoder.pretty.encode(currentBundle()) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Snapshot of the whole current configuration (layout + settings).
+    func currentBundle() -> ExportBundle {
+        ExportBundle(
             layout: PersistedLayout(
                 order: order,
                 folders: Array(folders.values),
@@ -353,9 +414,23 @@ final class LaunchpadStore: ObservableObject {
             ),
             settings: settings
         )
-        if let data = try? JSONEncoder.pretty.encode(bundle) {
-            try? data.write(to: url, options: .atomic)
-        }
+    }
+
+    /// Apply a bundle (from an imported file or a saved preset) to the live state.
+    func applyBundle(_ bundle: ExportBundle) {
+        // Untrusted input — normalize before use/persist.
+        settings = bundle.settings.normalized()
+        saveSettings()
+        mergeCustomIntoCatalogue(bundle.layout.customItems)
+        hidden = Set(bundle.layout.hidden)
+        freePositions = bundle.layout.freePositions
+        freePages = bundle.layout.freePages
+        widgets = bundle.layout.widgets.map { $0.normalized() }
+        applyImportedLayout(bundle.layout)
+        sanitizeFreePlacement()
+        save()
+        currentPage = 0
+        clampPage()
     }
 
     func importConfig() {
@@ -367,23 +442,9 @@ final class LaunchpadStore: ObservableObject {
               let data = try? Data(contentsOf: url),
               let bundle = try? JSONDecoder().decode(ExportBundle.self, from: data)
         else { return }
-
-        // Imported bundles are untrusted input — normalize before use/persist.
-        settings = bundle.settings.normalized()
-        saveSettings()
         // Note: imported custom items (esp. `.script`) are NOT executed on import;
-        // they only run when the user clicks them. Their target stays inspectable
-        // in the edit sheet and the right-click menu.
-        mergeCustomIntoCatalogue(bundle.layout.customItems)
-        hidden = Set(bundle.layout.hidden)
-        freePositions = bundle.layout.freePositions
-        freePages = bundle.layout.freePages
-        widgets = bundle.layout.widgets.map { $0.normalized() }
-        applyImportedLayout(bundle.layout)
-        sanitizeFreePlacement()
-        save()
-        currentPage = 0
-        clampPage()
+        // they only run when the user clicks them.
+        applyBundle(bundle)
     }
 
     private func applyImportedLayout(_ persisted: PersistedLayout) {
