@@ -62,6 +62,8 @@ struct WidgetItem: Identifiable, Codable, Hashable {
     var muted: Bool = true
     /// Video widget: audio volume 0…1 (used when not muted).
     var volume: Double = 0.6
+    /// Content opacity 0…1 (how transparent the image/video is drawn). 1 = opaque.
+    var opacity: Double = 1.0
 
     /// Clamp every field into a safe range (defends against hand-edited files).
     func normalized() -> WidgetItem {
@@ -72,10 +74,13 @@ struct WidgetItem: Identifiable, Codable, Hashable {
         v.w = min(max(v.w, 0.08), 0.9)
         v.h = min(max(v.h, 0.06), 0.9)
         v.volume = min(max(v.volume, 0), 1)
+        v.opacity = min(max(v.opacity, 0.05), 1)
         return v
     }
 
-    enum CodingKeys: String, CodingKey { case id, kind, page, x, y, w, h, text, transparent, muted, volume }
+    enum CodingKeys: String, CodingKey {
+        case id, kind, page, x, y, w, h, text, transparent, muted, volume, opacity
+    }
 }
 
 extension WidgetItem {
@@ -94,6 +99,7 @@ extension WidgetItem {
         transparent = (try? c.decode(Bool.self, forKey: .transparent)) ?? false
         muted = (try? c.decode(Bool.self, forKey: .muted)) ?? true
         volume = (try? c.decode(Double.self, forKey: .volume)) ?? 0.6
+        opacity = (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0
     }
 }
 

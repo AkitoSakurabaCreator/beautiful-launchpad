@@ -1380,6 +1380,13 @@ final class LaunchpadStore: ObservableObject {
         save()
     }
 
+    /// Set a widget's content opacity (0.05…1) — how transparent the image/video is.
+    func setWidgetOpacity(_ id: String, _ value: Double) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].opacity = min(max(value, 0.05), 1)
+        save()
+    }
+
     func updateWidgetText(_ id: String, _ text: String) {
         guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
         widgets[i].text = text

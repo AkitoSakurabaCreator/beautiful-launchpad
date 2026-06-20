@@ -364,6 +364,7 @@ struct WidgetTileView: View {
             WidgetContentView(widget: widget)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+                .opacity(widget.opacity)
         }
         .frame(width: w, height: h)
         .background(
@@ -387,7 +388,7 @@ struct WidgetTileView: View {
                 radius: transparent ? 0 : (cyber ? 8 : 4))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
         .overlay(alignment: .bottom) {
-            if widget.kind == .video && hovering { volumeBar }
+            if (widget.kind == .image || widget.kind == .video) && hovering { controlBar }
         }
         .onHover { hovering = $0 }
         .contextMenu {
@@ -460,25 +461,36 @@ struct WidgetTileView: View {
             )
     }
 
-    /// Inline volume fader for video widgets (shown on hover). Mute button + slider.
-    private var volumeBar: some View {
-        HStack(spacing: 6) {
-            Button { store.toggleWidgetMuted(widget.id) } label: {
-                Image(systemName: widget.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white)
+    /// Inline hover controls for media widgets: an opacity fader (image & video) plus a
+    /// mute + volume fader for video.
+    private var controlBar: some View {
+        VStack(spacing: 4) {
+            // Opacity fader (how transparent the media is drawn).
+            HStack(spacing: 6) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 11)).foregroundColor(.white)
+                Slider(value: Binding(get: { widget.opacity },
+                                      set: { store.setWidgetOpacity(widget.id, $0) }),
+                       in: 0.05...1)
+                    .controlSize(.mini).tint(.white)
             }
-            .buttonStyle(.plain)
-
-            Slider(value: Binding(get: { widget.volume },
-                                  set: { store.setWidgetVolume(widget.id, $0) }),
-                   in: 0...1)
-                .controlSize(.mini)
-                .tint(.white)
+            if widget.kind == .video {
+                HStack(spacing: 6) {
+                    Button { store.toggleWidgetMuted(widget.id) } label: {
+                        Image(systemName: widget.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 11)).foregroundColor(.white)
+                    }
+                    .buttonStyle(.plain)
+                    Slider(value: Binding(get: { widget.volume },
+                                          set: { store.setWidgetVolume(widget.id, $0) }),
+                           in: 0...1)
+                        .controlSize(.mini).tint(.white)
+                }
+            }
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.vertical, 5)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .padding(.bottom, 6)
         .padding(.horizontal, 8)
         .padding(.trailing, 14)   // keep clear of the resize handle
