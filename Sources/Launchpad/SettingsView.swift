@@ -210,18 +210,23 @@ struct SettingsView: View {
     }
 
     private var themeSwatches: some View {
-        HStack(spacing: 12) {
+        // Wrapping grid so any number of theme presets stays inside the card width
+        // (an HStack overflowed once the preset count grew).
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 60, maximum: 90), spacing: 12)],
+                  alignment: .leading, spacing: 12) {
             ForEach(Theming.themes) { theme in
                 let selected = store.settings.themeIndex == theme.id
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(LinearGradient(colors: theme.colors,
                                          startPoint: theme.start, endPoint: theme.end))
-                    .frame(width: 64, height: 42)
+                    .frame(height: 42)
+                    .frame(maxWidth: .infinity)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(Color.white.opacity(selected ? 0.95 : 0.2),
                                     lineWidth: selected ? 3 : 1)
                     )
+                    .contentShape(Rectangle())
                     .onTapGesture {
                         store.updateSettings {
                             $0.themeIndex = theme.id
