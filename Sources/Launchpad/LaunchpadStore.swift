@@ -1366,6 +1366,21 @@ final class LaunchpadStore: ObservableObject {
         save()
     }
 
+    /// Toggle a video widget's mute.
+    func toggleWidgetMuted(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].muted.toggle()
+        save()
+    }
+
+    /// Set a video widget's audio volume (0…1) and unmute it.
+    func setWidgetVolume(_ id: String, _ vol: Double) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].volume = min(max(vol, 0), 1)
+        widgets[i].muted = false
+        save()
+    }
+
     func updateWidgetText(_ id: String, _ text: String) {
         guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
         widgets[i].text = text

@@ -58,6 +58,10 @@ struct WidgetItem: Identifiable, Codable, Hashable {
     var text: String = ""     // notes content · image/video file path · per-widget config
     /// Hide the card background/border (for transparent images, alpha videos, overlays).
     var transparent: Bool = false
+    /// Video widget: mute its audio (default on).
+    var muted: Bool = true
+    /// Video widget: audio volume 0…1 (used when not muted).
+    var volume: Double = 0.6
 
     /// Clamp every field into a safe range (defends against hand-edited files).
     func normalized() -> WidgetItem {
@@ -67,15 +71,16 @@ struct WidgetItem: Identifiable, Codable, Hashable {
         v.y = min(max(v.y, 0), 1)
         v.w = min(max(v.w, 0.08), 0.9)
         v.h = min(max(v.h, 0.06), 0.9)
+        v.volume = min(max(v.volume, 0), 1)
         return v
     }
 
-    enum CodingKeys: String, CodingKey { case id, kind, page, x, y, w, h, text, transparent }
+    enum CodingKeys: String, CodingKey { case id, kind, page, x, y, w, h, text, transparent, muted, volume }
 }
 
 extension WidgetItem {
-    // Decode-tolerant: tolerate files that predate `transparent` / other fields so a
-    // single older widget can't wipe the whole array.
+    // Decode-tolerant: tolerate files that predate newer fields so a single older
+    // widget can't wipe the whole array.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -87,6 +92,8 @@ extension WidgetItem {
         h = (try? c.decode(Double.self, forKey: .h)) ?? 0.16
         text = (try? c.decode(String.self, forKey: .text)) ?? ""
         transparent = (try? c.decode(Bool.self, forKey: .transparent)) ?? false
+        muted = (try? c.decode(Bool.self, forKey: .muted)) ?? true
+        volume = (try? c.decode(Double.self, forKey: .volume)) ?? 0.6
     }
 }
 

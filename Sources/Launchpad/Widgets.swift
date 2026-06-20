@@ -63,7 +63,7 @@ struct WidgetContentView: View {
         case .system:  SystemWidgetView(accent: accent)
         case .weather: WeatherWidgetView(widget: widget, accent: accent)
         case .image:   ImageWidgetView(path: widget.text)
-        case .video:   VideoWidgetView(path: widget.text)
+        case .video:   VideoWidgetView(path: widget.text, muted: widget.muted, volume: widget.volume)
         }
     }
 }
@@ -86,9 +86,12 @@ private struct ImageWidgetView: View {
 
 private struct VideoWidgetView: View {
     let path: String
+    var muted: Bool = true
+    var volume: Double = 0.6
     var body: some View {
         if !path.isEmpty, FileManager.default.fileExists(atPath: (path as NSString).expandingTildeInPath) {
-            VideoBackgroundView(paths: [(path as NSString).expandingTildeInPath], muted: true)
+            // `.id(path)` swaps the player on file change; mute/volume apply in place.
+            VideoBackgroundView(paths: [(path as NSString).expandingTildeInPath], muted: muted, volume: volume)
                 .id(path)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         } else {
@@ -387,6 +390,16 @@ struct WidgetTileView: View {
         .contextMenu {
             if widget.kind == .image || widget.kind == .video {
                 Button(store.t(.chooseFile)) { store.chooseWidgetMedia(widget.id) }
+            }
+            if widget.kind == .video {
+                Button(widget.muted ? store.t(.videoSound) : store.t(.mute)) {
+                    store.toggleWidgetMuted(widget.id)
+                }
+                Menu(store.t(.volume)) {
+                    ForEach([25, 50, 75, 100], id: \.self) { p in
+                        Button("\(p)%") { store.setWidgetVolume(widget.id, Double(p) / 100) }
+                    }
+                }
             }
             Button(store.t(.widgetTransparent)) { store.toggleWidgetTransparent(widget.id) }
             Divider()
