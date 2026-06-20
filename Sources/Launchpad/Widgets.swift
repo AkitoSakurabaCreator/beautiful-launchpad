@@ -348,68 +348,79 @@ struct WidgetTileView: View {
     private var baseW: CGFloat { max(60, widget.w * areaSize.width) }
     private var baseH: CGFloat { max(44, widget.h * areaSize.height) }
 
+    // Body split into helpers — a single giant modifier chain made the type-checker
+    // crawl (53s clean build); extracting subviews keeps it fast.
     var body: some View {
         let w = max(60, baseW + resizeDelta.width)
         let h = max(44, baseH + resizeDelta.height)
         let cx = widget.x * areaSize.width + dragOffset.width
         let cy = widget.y * areaSize.height + dragOffset.height
+        let locked = widget.locked
 
-        let transparent = widget.transparent
-
-        VStack(spacing: 0) {
-            titleBar
-                // In transparent mode the title bar is hidden until you hover (so the
-                // media shows cleanly); it stays grabbable regardless.
-                .opacity(transparent && !hovering ? 0 : 1)
-            WidgetContentView(widget: widget)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-                .opacity(widget.opacity)
-        }
-        .frame(width: w, height: h)
-        .background(
-            Group {
-                if !transparent {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill((cyber ? CyberPalette.tile : Color.black).opacity(cyber ? 0.6 : 0.4))
-                }
-            }
-        )
-        .overlay(
-            Group {
-                if !transparent {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke((cyber ? CyberPalette.neon : Color.white).opacity(cyber ? 0.85 : 0.18),
-                                lineWidth: cyber ? 1.5 : 1)
-                }
-            }
-        )
-        .shadow(color: transparent ? .clear : (cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3)),
-                radius: transparent ? 0 : (cyber ? 8 : 4))
-        .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .overlay(alignment: .bottom) {
-            if (widget.kind == .image || widget.kind == .video) && hovering { controlBar }
-        }
-        .onHover { hovering = $0 }
-        .contextMenu {
-            if widget.kind == .image || widget.kind == .video {
-                Button(store.t(.chooseFile)) { store.chooseWidgetMedia(widget.id) }
-            }
-            if widget.kind == .video {
-                Button(widget.muted ? store.t(.videoSound) : store.t(.mute)) {
-                    store.toggleWidgetMuted(widget.id)
-                }
-            }
-            Button(store.t(.widgetTransparent)) { store.toggleWidgetTransparent(widget.id) }
-            Divider()
-            Button(store.t(.deleteItem), role: .destructive) { store.removeWidget(widget.id) }
-        }
+        card(w, h)
+            .overlay(alignment: .bottomTrailing) { if !locked { resizeHandle } }
+            .overlay(alignment: .bottom) { if hovering && !locked { controlBar } }
+            .rotationEffect(.degrees(widget.rotation))
+            .onHover { hovering = $0 }
+            .contextMenu { menuItems }
         // `.position` MUST be last: any interaction modifier applied *after* it (e.g.
         // .onHover) attaches to the parent-filling container and would swallow clicks
         // across the whole page, blocking the icons beneath. Keeping interactions on
         // the sized card means only the w×h tile is hit-testable; empty space passes
         // clicks through to the grid (matches how app icons are positioned).
         .position(x: cx, y: cy)
+    }
+
+    /// The visible card: title bar + content + frame/background/border/shadow.
+    private func card(_ w: CGFloat, _ h: CGFloat) -> some View {
+        let transparent = widget.transparent
+        let locked = widget.locked
+        return VStack(spacing: 0) {
+            titleBar
+                .opacity(locked ? 0 : (transparent && !hovering ? 0 : 1))
+                .allowsHitTesting(!locked)
+            WidgetContentView(widget: widget)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .opacity(widget.opacity)
+        }
+        .frame(width: w, height: h)
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .shadow(color: transparent ? .clear : (cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3)),
+                radius: transparent ? 0 : (cyber ? 8 : 4))
+    }
+
+    @ViewBuilder private var cardBackground: some View {
+        if !widget.transparent {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill((cyber ? CyberPalette.tile : Color.black).opacity(cyber ? 0.6 : 0.4))
+        }
+    }
+
+    @ViewBuilder private var cardBorder: some View {
+        if !widget.transparent {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke((cyber ? CyberPalette.neon : Color.white).opacity(cyber ? 0.85 : 0.18),
+                        lineWidth: cyber ? 1.5 : 1)
+        }
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        if widget.kind == .image || widget.kind == .video {
+            Button(store.t(.chooseFile)) { store.chooseWidgetMedia(widget.id) }
+        }
+        if widget.kind == .video {
+            Button(widget.muted ? store.t(.videoSound) : store.t(.mute)) {
+                store.toggleWidgetMuted(widget.id)
+            }
+        }
+        Button(widget.transparent ? store.t(.widgetShowWindow) : store.t(.widgetTransparent)) {
+            store.toggleWidgetTransparent(widget.id)
+        }
+        Button(widget.locked ? store.t(.unlock) : store.t(.lock)) { store.toggleWidgetLocked(widget.id) }
+        Divider()
+        Button(store.t(.deleteItem), role: .destructive) { store.removeWidget(widget.id) }
     }
 
     private var titleBar: some View {
@@ -430,8 +441,10 @@ struct WidgetTileView: View {
         .padding(.horizontal, 6)
         .frame(height: 18)
         .contentShape(Rectangle())
+        // Global space so the translation is a screen-space delta (a delta is offset-
+        // invariant, and unaffected by the tile's rotationEffect) → correct drag while rotated.
         .gesture(
-            DragGesture()
+            DragGesture(coordinateSpace: .global)
                 .onChanged { dragOffset = $0.translation }
                 .onEnded { v in
                     let center = CGPoint(x: widget.x * areaSize.width + v.translation.width,
@@ -463,16 +476,29 @@ struct WidgetTileView: View {
 
     /// Inline hover controls for media widgets: an opacity fader (image & video) plus a
     /// mute + volume fader for video.
+    private var isMedia: Bool { widget.kind == .image || widget.kind == .video }
+
     private var controlBar: some View {
         VStack(spacing: 4) {
-            // Opacity fader (how transparent the media is drawn).
+            // Rotation fader (all widgets).
             HStack(spacing: 6) {
-                Image(systemName: "circle.lefthalf.filled")
+                Image(systemName: "rotate.right")
                     .font(.system(size: 11)).foregroundColor(.white)
-                Slider(value: Binding(get: { widget.opacity },
-                                      set: { store.setWidgetOpacity(widget.id, $0) }),
-                       in: 0.05...1)
+                Slider(value: Binding(get: { widget.rotation },
+                                      set: { store.setWidgetRotation(widget.id, $0) }),
+                       in: -180...180)
                     .controlSize(.mini).tint(.white)
+            }
+            // Opacity fader (image & video).
+            if isMedia {
+                HStack(spacing: 6) {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 11)).foregroundColor(.white)
+                    Slider(value: Binding(get: { widget.opacity },
+                                          set: { store.setWidgetOpacity(widget.id, $0) }),
+                           in: 0.05...1)
+                        .controlSize(.mini).tint(.white)
+                }
             }
             if widget.kind == .video {
                 HStack(spacing: 6) {

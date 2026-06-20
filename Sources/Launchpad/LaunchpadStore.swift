@@ -1387,6 +1387,20 @@ final class LaunchpadStore: ObservableObject {
         save()
     }
 
+    /// Set a widget's rotation (degrees, −180…180).
+    func setWidgetRotation(_ id: String, _ degrees: Double) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].rotation = min(max(degrees, -180), 180)
+        save()
+    }
+
+    /// Lock/unlock a widget (locked = no hover UI, no drag/resize).
+    func toggleWidgetLocked(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].locked.toggle()
+        save()
+    }
+
     func updateWidgetText(_ id: String, _ text: String) {
         guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
         widgets[i].text = text
