@@ -30,6 +30,15 @@ enum Theming {
         ThemePreset(id: 5, name: "Rose",
                     colors: [Color(hex: "#9D174D"), Color(hex: "#7C3AED"), Color(hex: "#1E1B4B")],
                     start: .topLeading, end: .bottomTrailing),
+        // Neon cyberpunk: cyan → violet → hot-pink over a near-black base.
+        ThemePreset(id: 6, name: "Cyber",
+                    colors: [Color(hex: "#00F0FF"), Color(hex: "#7A2BFF"),
+                             Color(hex: "#FF2D95"), Color(hex: "#070217")],
+                    start: .topLeading, end: .bottomTrailing),
+        // Frosted glass: cool pale cyan → frosty white → soft lavender.
+        ThemePreset(id: 7, name: "Glass",
+                    colors: [Color(hex: "#8FB8D6"), Color(hex: "#DCEAF2"), Color(hex: "#B7C4E8")],
+                    start: .topLeading, end: .bottomTrailing),
     ]
 
     static func preset(_ index: Int) -> ThemePreset {
