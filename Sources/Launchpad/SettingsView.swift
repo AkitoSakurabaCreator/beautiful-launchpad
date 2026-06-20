@@ -282,6 +282,7 @@ struct SettingsView: View {
                 Text(store.t(.layoutClassic)).tag(LayoutStyle.classic)
                 Text(store.t(.layoutAndroid)).tag(LayoutStyle.android)
                 Text(store.t(.layoutWindows)).tag(LayoutStyle.windows)
+                Text(store.t(.layoutCyber)).tag(LayoutStyle.cyber)
             }
             .pickerStyle(.segmented)
             .labelsHidden()

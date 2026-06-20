@@ -110,6 +110,7 @@ enum LayoutStyle: String, Codable, CaseIterable {
     case classic   // macOS Launchpad
     case android   // rounded/larger icons, label-forward
     case windows   // tile-like square icons, denser grid
+    case cyber     // neon-bordered glowing tiles, dark glass folders, cyan labels
 }
 
 /// A per-page background override (used when the user customises individual pages).
