@@ -29,6 +29,7 @@ struct AddEditItemView: View {
                     Text(store.t(.kindApp)).tag(CustomItemKind.app)
                     Text(store.t(.kindScript)).tag(CustomItemKind.script)
                     Text(store.t(.kindURL)).tag(CustomItemKind.url)
+                    Text(store.t(.kindRandomImage)).tag(CustomItemKind.randomImage)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -126,6 +127,7 @@ struct AddEditItemView: View {
         case .app: return "/Applications/Example.app"
         case .script: return "~/scripts/run.sh   または   say hello"
         case .url: return "https://example.com"
+        case .randomImage: return "~/Pictures/Wallpapers"
         }
     }
 
@@ -134,6 +136,7 @@ struct AddEditItemView: View {
         case .app: return store.t(.appHint)
         case .script: return store.t(.scriptHint)
         case .url: return store.t(.urlHint)
+        case .randomImage: return store.t(.randomImageHint)
         }
     }
 
@@ -151,8 +154,9 @@ struct AddEditItemView: View {
     private func pickTarget() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
+        // Random-image items target a *folder*; everything else targets a file.
+        panel.canChooseDirectories = (kind == .randomImage)
+        panel.canChooseFiles = (kind != .randomImage)
         if kind == .app {
             panel.allowedContentTypes = [.application]
             panel.directoryURL = URL(fileURLWithPath: "/Applications")

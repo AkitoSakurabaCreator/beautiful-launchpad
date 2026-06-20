@@ -12,46 +12,61 @@ struct SettingsView: View {
                 .ignoresSafeArea()
                 .onTapGesture { store.showSettings = false }
 
-            VStack(alignment: .leading, spacing: 18) {
-                header
+            // GeometryReader keeps the card flexible (never inflates the root layout —
+            // an over-tall fixed card used to stretch the background image). The header
+            // stays pinned while the sections scroll within a height-capped card.
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                    header
+                        .padding(.horizontal, 28)
+                        .padding(.top, 22)
+                        .padding(.bottom, 12)
 
-                backgroundSection
-
-                Divider().overlay(Color.white.opacity(0.2))
-
-                gridSection
-
-                Divider().overlay(Color.white.opacity(0.2))
-
-                languageSection
-
-                Divider().overlay(Color.white.opacity(0.2))
-
-                updateSection
-
-                if !store.hiddenItems().isEmpty {
-                    Divider().overlay(Color.white.opacity(0.2))
-                    hiddenSection
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 18) {
+                            backgroundSection
+                            sectionDivider
+                            gridSection
+                            sectionDivider
+                            layoutSection
+                            sectionDivider
+                            animationSection
+                            sectionDivider
+                            languageSection
+                            sectionDivider
+                            soundSection
+                            sectionDivider
+                            updateSection
+                            if !store.hiddenItems().isEmpty {
+                                sectionDivider
+                                hiddenSection
+                            }
+                            sectionDivider
+                            transferSection
+                        }
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 26)
+                    }
                 }
-
-                Divider().overlay(Color.white.opacity(0.2))
-
-                transferSection
+                .frame(width: 560)
+                .frame(maxHeight: max(320, proxy.size.height - 96))
+                .background(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
-            .padding(28)
-            .frame(width: 560)
-            .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
-            )
-            .padding(40)
             .foregroundColor(.white)
         }
         .transition(.scale(scale: 0.94).combined(with: .opacity))
+    }
+
+    private var sectionDivider: some View {
+        Divider().overlay(Color.white.opacity(0.2))
     }
 
     // MARK: Sections
@@ -76,6 +91,8 @@ struct SettingsView: View {
                 Text(store.t(.bgTheme)).tag(BackgroundKind.theme)
                 Text(store.t(.bgImage)).tag(BackgroundKind.image)
                 Text(store.t(.bgSolid)).tag(BackgroundKind.solid)
+                Text(store.t(.bgSlideshow)).tag(BackgroundKind.slideshow)
+                Text(store.t(.bgVideo)).tag(BackgroundKind.video)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -84,15 +101,8 @@ struct SettingsView: View {
             case .theme:
                 themeSwatches
             case .image:
-                HStack(spacing: 12) {
-                    Button(store.t(.chooseImage)) { store.chooseWallpaper() }
-                    if let p = store.settings.wallpaperPath {
-                        Text((p as NSString).lastPathComponent)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                pickedFileRow(title: store.t(.chooseImage), path: store.settings.wallpaperPath) {
+                    store.chooseWallpaper()
                 }
             case .solid:
                 ColorPicker(store.t(.color), selection: bindingSolidColor, supportsOpacity: false)
@@ -101,11 +111,100 @@ struct SettingsView: View {
                 Text(store.t(.desktopBlurNote))
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.6))
+                HStack {
+                    Text(store.t(.blurStrength)).frame(width: 96, alignment: .leading)
+                    Slider(value: bindingBlurIntensity, in: 0...1)
+                    Text("\(Int(store.settings.blurIntensity * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 36)
+                }
+            case .slideshow:
+                pickedFileRow(title: store.t(.chooseFolder), path: store.settings.slideshowFolder) {
+                    store.chooseSlideshowFolder()
+                }
+                Toggle(store.t(.slideshowRandom), isOn: bindingSlideshowRandom)
+                HStack {
+                    Text(store.t(.slideshowInterval)).frame(width: 96, alignment: .leading)
+                    Slider(value: bindingSlideshowInterval, in: 3...300, step: 1)
+                    Text("\(Int(store.settings.slideshowInterval))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 32)
+                }
+            case .video:
+                pickedFileRow(title: store.t(.chooseVideo), path: store.settings.videoPath) {
+                    store.chooseVideo()
+                }
+                pickedFileRow(title: store.t(.chooseFolder), path: store.settings.videoFolder) {
+                    store.chooseVideoFolder()
+                }
+                if store.settings.videoFolder != nil {
+                    Toggle(store.t(.slideshowRandom), isOn: bindingVideoRandom)
+                }
+                Toggle(store.t(.videoSound), isOn: bindingVideoSound)
+                if !store.settings.videoMuted {
+                    HStack {
+                        Text(store.t(.volume)).frame(width: 96, alignment: .leading)
+                        Slider(value: bindingVideoVolume, in: 0...1)
+                        Text("\(Int(store.settings.videoVolume * 100))%")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.white.opacity(0.6))
+                            .frame(width: 36)
+                    }
+                }
             }
 
             HStack {
                 Text(store.t(.dim)).frame(width: 56, alignment: .leading)
                 Slider(value: bindingDim, in: 0...0.6)
+            }
+        }
+    }
+
+    /// A "choose…" button plus the basename of the currently selected file/folder.
+    private func pickedFileRow(title: String, path: String?, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Button(title, action: action)
+            if let p = path {
+                Text((p as NSString).lastPathComponent)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
+    private var animationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(store.t(.animation)).font(.headline)
+            Toggle(store.t(.animationsEnabled), isOn: bindingAnimationsEnabled)
+            if store.settings.animationsEnabled {
+                Picker(store.t(.openAnimation), selection: bindingOpenAnimation) {
+                    Text(store.t(.animZoom)).tag(OpenAnimation.zoom)
+                    Text(store.t(.animFade)).tag(OpenAnimation.fade)
+                    Text(store.t(.animSlide)).tag(OpenAnimation.slide)
+                    Text(store.t(.animNone)).tag(OpenAnimation.none)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                HStack {
+                    Text(store.t(.animationSpeed)).frame(width: 96, alignment: .leading)
+                    Slider(value: bindingAnimationSpeed, in: 0.5...2.0, step: 0.25)
+                    Text(String(format: "%.2g×", store.settings.animationSpeed))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 36)
+                }
+            }
+            Toggle(store.t(.freePlacement), isOn: bindingFreePlacement)
+            if store.settings.freePlacement {
+                Text(store.t(.freePlacementNote))
+                    .font(.caption).foregroundColor(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(store.t(.realign)) { store.realignToGrid() }
+                    .font(.caption)
             }
         }
     }
@@ -139,6 +238,48 @@ struct SettingsView: View {
             Stepper("\(store.t(.columns)): \(store.settings.columns)", value: bindingColumns, in: 4...10)
             Stepper("\(store.t(.rows)): \(store.settings.rows)", value: bindingRows, in: 3...8)
             Toggle(store.t(.showLabels), isOn: bindingLabels)
+            Stepper("\(store.t(.folderColumns)): \(store.settings.folderColumns)", value: bindingFolderColumns, in: 3...8)
+            Stepper("\(store.t(.folderRows)): \(store.settings.folderRows)", value: bindingFolderRows, in: 2...6)
+        }
+    }
+
+    private var soundSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(store.t(.sound)).font(.headline)
+            Toggle(store.t(.launchSound), isOn: bindingLaunchSound)
+            if store.settings.launchSound {
+                Picker(store.t(.launchSoundName), selection: bindingLaunchSoundName) {
+                    ForEach(LaunchpadStore.availableSounds, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .frame(maxWidth: 240)
+                .disabled(store.settings.launchSoundPath != nil)
+
+                HStack(spacing: 10) {
+                    Button(store.t(.chooseSound)) { store.chooseLaunchSound() }
+                    if let p = store.settings.launchSoundPath {
+                        Text((p as NSString).lastPathComponent)
+                            .font(.caption).foregroundColor(.white.opacity(0.6))
+                            .lineLimit(1).truncationMode(.middle)
+                        Button(store.t(.clearSound)) { store.clearLaunchSound() }
+                            .buttonStyle(.plain).foregroundColor(.white.opacity(0.7))
+                    }
+                }
+            }
+        }
+    }
+
+    private var layoutSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(store.t(.layoutStyle)).font(.headline)
+            Picker(store.t(.layoutStyle), selection: bindingLayoutStyle) {
+                Text(store.t(.layoutClassic)).tag(LayoutStyle.classic)
+                Text(store.t(.layoutAndroid)).tag(LayoutStyle.android)
+                Text(store.t(.layoutWindows)).tag(LayoutStyle.windows)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
         }
     }
 
@@ -278,6 +419,66 @@ struct SettingsView: View {
     private var bindingLanguage: Binding<AppLanguage> {
         Binding(get: { store.settings.language },
                 set: { v in store.updateSettings { $0.language = v } })
+    }
+    private var bindingBlurIntensity: Binding<Double> {
+        Binding(get: { store.settings.blurIntensity },
+                set: { v in store.updateSettings { $0.blurIntensity = v } })
+    }
+    private var bindingVideoSound: Binding<Bool> {
+        Binding(get: { !store.settings.videoMuted },
+                set: { v in store.updateSettings { $0.videoMuted = !v } })
+    }
+    private var bindingVideoVolume: Binding<Double> {
+        Binding(get: { store.settings.videoVolume },
+                set: { v in store.updateSettings { $0.videoVolume = v } })
+    }
+    private var bindingVideoRandom: Binding<Bool> {
+        Binding(get: { store.settings.videoRandom },
+                set: { v in store.updateSettings { $0.videoRandom = v } })
+    }
+    private var bindingFolderColumns: Binding<Int> {
+        Binding(get: { store.settings.folderColumns },
+                set: { v in store.updateSettings { $0.folderColumns = v } })
+    }
+    private var bindingFolderRows: Binding<Int> {
+        Binding(get: { store.settings.folderRows },
+                set: { v in store.updateSettings { $0.folderRows = v } })
+    }
+    private var bindingLaunchSound: Binding<Bool> {
+        Binding(get: { store.settings.launchSound },
+                set: { v in store.updateSettings { $0.launchSound = v } })
+    }
+    private var bindingLaunchSoundName: Binding<String> {
+        Binding(get: { store.settings.launchSoundName },
+                set: { v in store.updateSettings { $0.launchSoundName = v } })
+    }
+    private var bindingSlideshowRandom: Binding<Bool> {
+        Binding(get: { store.settings.slideshowRandom },
+                set: { v in store.updateSettings { $0.slideshowRandom = v } })
+    }
+    private var bindingSlideshowInterval: Binding<Double> {
+        Binding(get: { store.settings.slideshowInterval },
+                set: { v in store.updateSettings { $0.slideshowInterval = v } })
+    }
+    private var bindingAnimationsEnabled: Binding<Bool> {
+        Binding(get: { store.settings.animationsEnabled },
+                set: { v in store.updateSettings { $0.animationsEnabled = v } })
+    }
+    private var bindingAnimationSpeed: Binding<Double> {
+        Binding(get: { store.settings.animationSpeed },
+                set: { v in store.updateSettings { $0.animationSpeed = v } })
+    }
+    private var bindingOpenAnimation: Binding<OpenAnimation> {
+        Binding(get: { store.settings.openAnimation },
+                set: { v in store.updateSettings { $0.openAnimation = v } })
+    }
+    private var bindingFreePlacement: Binding<Bool> {
+        Binding(get: { store.settings.freePlacement },
+                set: { v in store.updateSettings { $0.freePlacement = v } })
+    }
+    private var bindingLayoutStyle: Binding<LayoutStyle> {
+        Binding(get: { store.settings.layoutStyle },
+                set: { v in store.updateSettings { $0.layoutStyle = v } })
     }
     private var bindingAutoUpdate: Binding<Bool> {
         Binding(get: { updater.automaticallyChecksForUpdates },

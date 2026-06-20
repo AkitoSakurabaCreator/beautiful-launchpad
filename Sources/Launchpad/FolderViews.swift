@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 /// Full-screen overlay shown when a folder is opened. The contained items are laid
@@ -19,15 +20,38 @@ struct FolderOverlayView: View {
     let folder: Folder
     @State private var hoveredRemove: String? = nil
 
-    // Fixed folder-grid metrics → constant card size regardless of item count.
-    private let cols = 5
-    private let rows = 4
-    private let cell: CGFloat = 96
-    private let hSpacing: CGFloat = 22
-    private let vSpacing: CGFloat = 18
-    private let sidePad: CGFloat = 40    // left/right inner margin (also the drop area)
-    private let headerPad: CGFloat = 132 // top space reserved for back / name / colour row
-    private let bottomPad: CGFloat = 44  // space reserved for page dots
+    // Folder-grid metrics. Columns/rows are user-adjustable (Settings → folder size).
+    private var cols: Int { store.settings.folderColumns }
+    private var rows: Int { store.settings.folderRows }
+
+    // Base (unscaled) metrics.
+    private let baseCell: CGFloat = 96
+    private let baseHSpacing: CGFloat = 22
+    private let baseVSpacing: CGFloat = 18
+    private let baseSidePad: CGFloat = 40
+    private let baseHeaderPad: CGFloat = 132
+    private let baseBottomPad: CGFloat = 44
+
+    private var screenSize: CGSize { NSScreen.main?.frame.size ?? CGSize(width: 1440, height: 900) }
+    private var baseGridW: CGFloat { CGFloat(cols) * baseCell + CGFloat(cols - 1) * baseHSpacing }
+    private var baseGridH: CGFloat { CGFloat(rows) * baseCell + CGFloat(rows - 1) * baseVSpacing }
+    private var baseCardW: CGFloat { baseGridW + baseSidePad * 2 }
+    private var baseCardH: CGFloat { baseHeaderPad + baseGridH + baseBottomPad }
+
+    /// Shrink the whole card uniformly so it always fits the screen. Prevents both the
+    /// card overflowing AND the over-tall-card-inflates-the-background bug for large
+    /// folder grids (e.g. 8×6) on small displays. The drop delegate uses this same
+    /// scaled geometry, so hit-testing stays consistent.
+    private var fit: CGFloat {
+        min(1, screenSize.width * 0.92 / baseCardW, screenSize.height * 0.88 / baseCardH)
+    }
+
+    private var cell: CGFloat { baseCell * fit }
+    private var hSpacing: CGFloat { baseHSpacing * fit }
+    private var vSpacing: CGFloat { baseVSpacing * fit }
+    private var sidePad: CGFloat { baseSidePad * fit }
+    private var headerPad: CGFloat { baseHeaderPad * fit }
+    private var bottomPad: CGFloat { baseBottomPad * fit }
 
     private var gridW: CGFloat { CGFloat(cols) * cell + CGFloat(cols - 1) * hSpacing }
     private var gridH: CGFloat { CGFloat(rows) * cell + CGFloat(rows - 1) * vSpacing }
@@ -106,8 +130,8 @@ struct FolderOverlayView: View {
                 of: [UTType.text],
                 delegate: FolderGridDropDelegate(store: store, areaSize: CGSize(width: cardW, height: cardH))
             )
-            .animation(.easeInOut(duration: 0.2), value: items)
-            .animation(.easeInOut(duration: 0.25), value: store.folderPage)
+            .animation(store.settings.anim(0.2), value: items)
+            .animation(store.settings.anim(0.25), value: store.folderPage)
             .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
     }
@@ -141,9 +165,9 @@ struct FolderOverlayView: View {
             )
             .textFieldStyle(.plain)
             .multilineTextAlignment(.center)
-            .font(.system(size: 22, weight: .semibold))
+            .font(.system(size: 22 * fit, weight: .semibold))
             .foregroundColor(.white)
-            .frame(maxWidth: 320)
+            .frame(maxWidth: 320 * fit)
 
             colorRow
         }
@@ -230,7 +254,7 @@ struct FolderOverlayView: View {
         let selected = hex == current
         Circle()
             .fill(hex.map { Color(hex: $0) } ?? Color.white.opacity(0.18))
-            .frame(width: 22, height: 22)
+            .frame(width: 22 * fit, height: 22 * fit)
             .overlay(
                 Circle().stroke(Color.white.opacity(selected ? 0.95 : 0.3),
                                 lineWidth: selected ? 3 : 1)
@@ -239,7 +263,7 @@ struct FolderOverlayView: View {
                 Group {
                     if hex == nil {
                         Image(systemName: "circle.slash")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11 * fit))
                             .foregroundColor(.white.opacity(0.7))
                     }
                 }
