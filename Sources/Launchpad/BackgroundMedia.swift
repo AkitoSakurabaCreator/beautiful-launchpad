@@ -10,13 +10,16 @@ let imageFileExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "heif", "g
 let videoFileExtensions: Set<String> = ["mp4", "m4v", "mov", "webm", "avi", "mkv", "mpg", "mpeg"]
 
 /// List file paths with one of `exts` directly inside `folder` (non-recursive), by name.
+/// Expands a leading `~` so hand-typed / imported tilde paths (e.g. the
+/// `~/Pictures/Wallpapers` placeholder for random-image items) resolve correctly.
 private func files(in folder: String, exts: Set<String>) -> [String] {
+    let dir = (folder as NSString).expandingTildeInPath
     let fm = FileManager.default
-    guard let entries = try? fm.contentsOfDirectory(atPath: folder) else { return [] }
+    guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
     return entries
         .filter { exts.contains(($0 as NSString).pathExtension.lowercased()) }
         .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-        .map { (folder as NSString).appendingPathComponent($0) }
+        .map { (dir as NSString).appendingPathComponent($0) }
 }
 
 /// List image file paths directly inside `folder` (non-recursive), sorted by name.
@@ -85,11 +88,12 @@ final class PlayerContainerView: NSView {
     private var queuePlayer: AVQueuePlayer?  // single-clip seamless loop
     private var looper: AVPlayerLooper?
     private var playerLayer: AVPlayerLayer?
-    private var endObserver: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
     private var signature: String?
     private var playlist: [String] = []
     private var idx = 0
     private var random = false
+    private var failStreak = 0   // consecutive load failures; bounds an all-broken folder
 
     override init(frame frameRect: NSRect) { super.init(frame: frameRect); wantsLayer = true }
     required init?(coder: NSCoder) { super.init(coder: coder); wantsLayer = true }
@@ -110,7 +114,8 @@ final class PlayerContainerView: NSView {
         if existing.count == 1 {
             let item = AVPlayerItem(url: URL(fileURLWithPath: existing[0]))
             let q = AVQueuePlayer()
-            q.isMuted = muted; q.volume = vol; q.actionAtItemEnd = .advance
+            q.isMuted = muted; q.volume = vol
+            // Do NOT touch actionAtItemEnd here — AVPlayerLooper manages the queue.
             looper = AVPlayerLooper(player: q, templateItem: item)
             attachLayer(for: q)
             queuePlayer = q
@@ -138,13 +143,29 @@ final class PlayerContainerView: NSView {
     private func playCurrent() {
         guard let p = player, playlist.indices.contains(idx) else { return }
         let item = AVPlayerItem(url: URL(fileURLWithPath: playlist[idx]))
-        if let tok = endObserver { NotificationCenter.default.removeObserver(tok) }
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
-        ) { [weak self] _ in self?.advance() }
+        removeObservers()
+        // Advance on normal end OR on load/playback failure, so one bad clip can't
+        // stall the whole playlist.
+        for name in [Notification.Name.AVPlayerItemDidPlayToEndTime,
+                     .AVPlayerItemFailedToPlayToEndTime] {
+            observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: item, queue: .main
+            ) { [weak self] note in self?.itemFinished(failed: note.name == .AVPlayerItemFailedToPlayToEndTime) })
+        }
         p.replaceCurrentItem(with: item)
         p.seek(to: .zero)
         p.play()
+    }
+
+    private func itemFinished(failed: Bool) {
+        if failed {
+            failStreak += 1
+            // Stop churning if every clip in the folder is unplayable.
+            if failStreak > max(1, playlist.count) { removeObservers(); return }
+        } else {
+            failStreak = 0
+        }
+        advance()
     }
 
     private func advance() {
@@ -154,12 +175,17 @@ final class PlayerContainerView: NSView {
         playCurrent()
     }
 
+    private func removeObservers() {
+        for tok in observers { NotificationCenter.default.removeObserver(tok) }
+        observers.removeAll()
+    }
+
     func teardown() {
-        if let tok = endObserver { NotificationCenter.default.removeObserver(tok); endObserver = nil }
+        removeObservers()
         player?.pause(); queuePlayer?.pause()
         playerLayer?.removeFromSuperlayer()
         looper = nil; player = nil; queuePlayer = nil; playerLayer = nil
-        signature = nil; playlist = []; idx = 0
+        signature = nil; playlist = []; idx = 0; failStreak = 0
     }
 
     override func layout() {
