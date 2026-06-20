@@ -383,6 +383,11 @@ struct WidgetTileView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
                 .opacity(widget.opacity)
+                .contentShape(Rectangle())
+                // Grab the body (the media itself) to move it too — except Notes (whose
+                // editor needs clicks) and while locked. The hover sliders / resize
+                // handle are overlays on top, so they still capture their own drags.
+                .gesture(moveGesture, including: (widget.kind == .notes || locked) ? .subviews : .all)
         }
         .frame(width: w, height: h)
         .background(cardBackground)
@@ -441,18 +446,20 @@ struct WidgetTileView: View {
         .padding(.horizontal, 6)
         .frame(height: 18)
         .contentShape(Rectangle())
-        // Global space so the translation is a screen-space delta (a delta is offset-
-        // invariant, and unaffected by the tile's rotationEffect) → correct drag while rotated.
-        .gesture(
-            DragGesture(coordinateSpace: .global)
-                .onChanged { dragOffset = $0.translation }
-                .onEnded { v in
-                    let center = CGPoint(x: widget.x * areaSize.width + v.translation.width,
-                                         y: widget.y * areaSize.height + v.translation.height)
-                    store.moveWidget(widget.id, center: center, container: areaSize)
-                    dragOffset = .zero
-                }
-        )
+        .gesture(moveGesture)
+    }
+
+    /// Drag-to-move. Global space so the translation is a screen-space delta (offset-
+    /// invariant and unaffected by the tile's rotationEffect) → correct while rotated.
+    private var moveGesture: some Gesture {
+        DragGesture(coordinateSpace: .global)
+            .onChanged { dragOffset = $0.translation }
+            .onEnded { v in
+                let center = CGPoint(x: widget.x * areaSize.width + v.translation.width,
+                                     y: widget.y * areaSize.height + v.translation.height)
+                store.moveWidget(widget.id, center: center, container: areaSize)
+                dragOffset = .zero
+            }
     }
 
     private var resizeHandle: some View {
