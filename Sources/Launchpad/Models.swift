@@ -335,10 +335,23 @@ struct ExportBundle: Codable {
     var settings: AppSettings
 }
 
-/// A named, in-app snapshot of the whole configuration (same content as an export),
-/// so the user can switch setups without juggling files. `id` is `"preset-<uuid>"`.
+/// A named, in-app **design** preset: a snapshot of the appearance settings only
+/// (background, theme, layout style, animation, blur, …). Applying it changes the look
+/// without touching the user's app arrangement / folders / widgets. `id` = `"preset-<uuid>"`.
 struct Preset: Identifiable, Codable {
     var id: String
     var name: String
-    var bundle: ExportBundle
+    var settings: AppSettings
+
+    enum CodingKeys: String, CodingKey { case id, name, settings }
+}
+
+extension Preset {
+    // Decode-tolerant so an older preset file shape doesn't drop the whole list.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? "preset-" + UUID().uuidString
+        name = (try? c.decode(String.self, forKey: .name)) ?? "Preset"
+        settings = (try? c.decode(AppSettings.self, forKey: .settings))?.normalized() ?? AppSettings()
+    }
 }

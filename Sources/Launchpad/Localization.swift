@@ -189,7 +189,7 @@ enum L {
         .savePreset:          ("現在の設定を保存", "Save current"),
         .apply:               ("適用", "Apply"),
         .presetUpdate:        ("更新", "Update"),
-        .presetsNote:         ("現在の設定（配置・ウィジェット・外観）を名前を付けて保存し、ワンクリックで切り替えできます。",
-                               "Save the current setup (layout, widgets, appearance) by name and switch with one click."),
+        .presetsNote:         ("デザイン（背景・テーマ・レイアウト・アニメ等の外観）を名前を付けて保存し、ワンクリックで切り替えできます。アプリの配置やフォルダ・ウィジェットは変わりません。",
+                               "Save the design (background, theme, layout, animation…) by name and switch with one click. Your app arrangement, folders and widgets are not changed."),
     ]
 }

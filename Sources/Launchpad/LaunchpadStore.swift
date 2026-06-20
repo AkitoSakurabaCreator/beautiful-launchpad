@@ -140,26 +140,29 @@ final class LaunchpadStore: ObservableObject {
         }
     }
 
-    /// Save the current configuration as a new named preset.
+    /// Save the current appearance (design) settings as a new named preset.
     @discardableResult
     func saveCurrentAsPreset(name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        presets.append(Preset(id: "preset-" + UUID().uuidString, name: trimmed, bundle: currentBundle()))
+        presets.append(Preset(id: "preset-" + UUID().uuidString, name: trimmed, settings: settings))
         savePresets()
         return true
     }
 
-    /// Apply a saved preset to the live configuration.
+    /// Apply a saved design preset — changes the look only; the app arrangement,
+    /// folders and widgets are left untouched.
     func applyPreset(_ id: String) {
         guard let p = presets.first(where: { $0.id == id }) else { return }
-        applyBundle(p.bundle)
+        settings = p.settings.normalized()
+        saveSettings()
+        clampPage()   // columns/rows may differ → page count can change
     }
 
-    /// Overwrite a preset's snapshot with the current configuration.
+    /// Overwrite a preset's snapshot with the current appearance settings.
     func updatePreset(_ id: String) {
         guard let i = presets.firstIndex(where: { $0.id == id }) else { return }
-        presets[i].bundle = currentBundle()
+        presets[i].settings = settings
         savePresets()
     }
 
