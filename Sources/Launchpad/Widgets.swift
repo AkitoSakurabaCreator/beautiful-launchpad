@@ -332,8 +332,13 @@ struct WidgetTileView: View {
         .shadow(color: cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3),
                 radius: cyber ? 8 : 4)
         .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .position(x: cx, y: cy)
         .onHover { hovering = $0 }
+        // `.position` MUST be last: any interaction modifier applied *after* it (e.g.
+        // .onHover) attaches to the parent-filling container and would swallow clicks
+        // across the whole page, blocking the icons beneath. Keeping interactions on
+        // the sized card means only the w×h tile is hit-testable; empty space passes
+        // clicks through to the grid (matches how app icons are positioned).
+        .position(x: cx, y: cy)
     }
 
     private var titleBar: some View {
