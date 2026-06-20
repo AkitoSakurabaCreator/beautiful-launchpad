@@ -13,9 +13,10 @@ struct AppInfo: Identifiable, Hashable {
 
 /// What a user-added custom item launches.
 enum CustomItemKind: String, Codable, CaseIterable {
-    case app     // an .app bundle (or any path) at an arbitrary location
-    case script  // a script file or a shell command line
-    case url     // a web URL / deep link opened in the default handler
+    case app          // an .app bundle (or any path) at an arbitrary location
+    case script       // a script file or a shell command line
+    case url          // a web URL / deep link opened in the default handler
+    case randomImage  // open a random image from a folder (`target` = folder path)
 }
 
 /// A user-created launcher entry that is NOT discovered by the app scanner.
@@ -51,24 +52,37 @@ struct PersistedLayout: Codable {
     /// Ids the user chose to hide. Kept here (not just dropped) so a hidden app is
     /// not re-added on the next scan, and can be restored from Settings.
     var hidden: [String]
+    /// Free-placement coordinates (normalized 0…1 within the page area), keyed by
+    /// top-level id. Used only when AppSettings.freePlacement is on; empty = auto-grid.
+    var freePositions: [String: CGPoint]
+    /// Free-placement page assignment per id (which page the item sits on). Lets the
+    /// user spread items across pages in free mode independent of `order`.
+    var freePages: [String: Int]
 
-    init(order: [String], folders: [Folder], customItems: [CustomItem] = [], hidden: [String] = []) {
+    init(order: [String], folders: [Folder], customItems: [CustomItem] = [],
+         hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:]) {
         self.order = order
         self.folders = folders
         self.customItems = customItems
         self.hidden = hidden
+        self.freePositions = freePositions
+        self.freePages = freePages
     }
 
-    enum CodingKeys: String, CodingKey { case order, folders, customItems, hidden }
+    enum CodingKeys: String, CodingKey {
+        case order, folders, customItems, hidden, freePositions, freePages
+    }
 
-    // Tolerate older files that predate `customItems` / `hidden` (and partial/hand-edited
-    // JSON): every field falls back to a safe default rather than failing the whole decode.
+    // Tolerate older files that predate newer fields (and partial/hand-edited JSON):
+    // every field falls back to a safe default rather than failing the whole decode.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         order = (try? c.decode([String].self, forKey: .order)) ?? []
         folders = (try? c.decode([Folder].self, forKey: .folders)) ?? []
         customItems = (try? c.decode([CustomItem].self, forKey: .customItems)) ?? []
         hidden = (try? c.decode([String].self, forKey: .hidden)) ?? []
+        freePositions = (try? c.decode([String: CGPoint].self, forKey: .freePositions)) ?? [:]
+        freePages = (try? c.decode([String: Int].self, forKey: .freePages)) ?? [:]
     }
 }
 
@@ -78,6 +92,32 @@ enum BackgroundKind: String, Codable, CaseIterable {
     case theme         // built-in gradient preset
     case solid         // single colour
     case image         // user-picked wallpaper image
+    case slideshow     // cycle through images in a folder
+    case video         // looping muted video file
+}
+
+/// Open/close transition style for the Launchpad overlay.
+enum OpenAnimation: String, Codable, CaseIterable {
+    case zoom    // classic Launchpad fade + scale
+    case fade    // opacity only
+    case slide   // slide up from the bottom
+    case none    // instant (no transition)
+}
+
+/// Overall layout personality. The classic 7×5 paged grid plus themed variants that
+/// restyle icon shape, label, density, and accent to evoke other desktops.
+enum LayoutStyle: String, Codable, CaseIterable {
+    case classic   // macOS Launchpad
+    case android   // rounded/larger icons, label-forward
+    case windows   // tile-like square icons, denser grid
+}
+
+/// A per-page background override (used when the user customises individual pages).
+struct PageBackground: Codable, Hashable {
+    enum Kind: String, Codable { case color, image }
+    var kind: Kind
+    var colorHex: String?
+    var imagePath: String?
 }
 
 /// User-customisable appearance settings.
@@ -92,9 +132,55 @@ struct AppSettings: Codable {
     var showLabels: Bool = true
     var language: AppLanguage = .system
 
+    /// Desktop-blur intensity, 0…1. 0 = no blur (crisp desktop), 1 = full frosted glass.
+    /// Implemented by cross-fading a frosted overlay over the crisp desktop.
+    var blurIntensity: Double = 0.6
+    /// Folder overlay grid dimensions (drives the open-folder card size & per-page capacity).
+    var folderColumns: Int = 5
+    var folderRows: Int = 4
+    /// Play a short sound when an app/item is launched.
+    var launchSound: Bool = false
+    /// System sound name used for the launch sound (e.g. "Pop", "Tink").
+    var launchSoundName: String = "Pop"
+    /// Optional custom sound file for the launch sound; overrides `launchSoundName`.
+    var launchSoundPath: String? = nil
+    /// Mute the looping video background (off = play its audio).
+    var videoMuted: Bool = true
+    /// Video background audio volume (0…1), used when not muted.
+    var videoVolume: Double = 0.6
+
+    // Animation
+    var animationsEnabled: Bool = true
+    /// Multiplier: 0.5 = slow … 2.0 = fast (durations are divided by this).
+    var animationSpeed: Double = 1.0
+    var openAnimation: OpenAnimation = .zoom
+
+    // Layout / placement
+    var freePlacement: Bool = false
+    var layoutStyle: LayoutStyle = .classic
+
+    // Video / slideshow backgrounds
+    var videoPath: String? = nil
+    /// Optional folder of videos played as a playlist (overrides `videoPath`).
+    var videoFolder: String? = nil
+    /// Shuffle the video playlist (vs. sequential). Only relevant with `videoFolder`.
+    var videoRandom: Bool = true
+    var slideshowFolder: String? = nil
+    var slideshowInterval: Double = 30          // seconds between images
+    var slideshowRandom: Bool = true
+
+    /// Per-page background overrides, keyed by page index as a string ("0", "1", …).
+    var pageBackgrounds: [String: PageBackground] = [:]
+
+    /// First-run onboarding / permission dialog has been shown.
+    var onboardingShown: Bool = false
+
     // Tolerate older/partial files: every field has a default.
     enum CodingKeys: String, CodingKey {
         case backgroundKind, themeIndex, solidColorHex, wallpaperPath, columns, rows, dim, showLabels, language
+        case blurIntensity, folderColumns, folderRows, launchSound, launchSoundName, launchSoundPath, videoMuted, videoVolume
+        case animationsEnabled, animationSpeed, openAnimation, freePlacement, layoutStyle
+        case videoPath, videoFolder, videoRandom, slideshowFolder, slideshowInterval, slideshowRandom, pageBackgrounds, onboardingShown
     }
 
     init() {}
@@ -110,6 +196,27 @@ struct AppSettings: Codable {
         dim = (try? c.decode(Double.self, forKey: .dim)) ?? 0.22
         showLabels = (try? c.decode(Bool.self, forKey: .showLabels)) ?? true
         language = (try? c.decode(AppLanguage.self, forKey: .language)) ?? .system
+        blurIntensity = (try? c.decode(Double.self, forKey: .blurIntensity)) ?? 0.6
+        folderColumns = (try? c.decode(Int.self, forKey: .folderColumns)) ?? 5
+        folderRows = (try? c.decode(Int.self, forKey: .folderRows)) ?? 4
+        launchSound = (try? c.decode(Bool.self, forKey: .launchSound)) ?? false
+        launchSoundName = (try? c.decode(String.self, forKey: .launchSoundName)) ?? "Pop"
+        launchSoundPath = try? c.decodeIfPresent(String.self, forKey: .launchSoundPath)
+        videoMuted = (try? c.decode(Bool.self, forKey: .videoMuted)) ?? true
+        videoVolume = (try? c.decode(Double.self, forKey: .videoVolume)) ?? 0.6
+        animationsEnabled = (try? c.decode(Bool.self, forKey: .animationsEnabled)) ?? true
+        animationSpeed = (try? c.decode(Double.self, forKey: .animationSpeed)) ?? 1.0
+        openAnimation = (try? c.decode(OpenAnimation.self, forKey: .openAnimation)) ?? .zoom
+        freePlacement = (try? c.decode(Bool.self, forKey: .freePlacement)) ?? false
+        layoutStyle = (try? c.decode(LayoutStyle.self, forKey: .layoutStyle)) ?? .classic
+        videoPath = try? c.decodeIfPresent(String.self, forKey: .videoPath)
+        videoFolder = try? c.decodeIfPresent(String.self, forKey: .videoFolder)
+        videoRandom = (try? c.decode(Bool.self, forKey: .videoRandom)) ?? true
+        slideshowFolder = try? c.decodeIfPresent(String.self, forKey: .slideshowFolder)
+        slideshowInterval = (try? c.decode(Double.self, forKey: .slideshowInterval)) ?? 30
+        slideshowRandom = (try? c.decode(Bool.self, forKey: .slideshowRandom)) ?? true
+        pageBackgrounds = (try? c.decode([String: PageBackground].self, forKey: .pageBackgrounds)) ?? [:]
+        onboardingShown = (try? c.decode(Bool.self, forKey: .onboardingShown)) ?? false
     }
 
     /// Clamp every field that feeds grid math (division/modulo) or array indexing
@@ -128,6 +235,12 @@ struct AppSettings: Codable {
         s.rows = min(max(s.rows, 3), 8)
         s.dim = min(max(s.dim, 0), 1)
         s.themeIndex = min(max(s.themeIndex, 0), Theming.themes.count - 1)
+        s.blurIntensity = min(max(s.blurIntensity, 0), 1)
+        s.videoVolume = min(max(s.videoVolume, 0), 1)
+        s.folderColumns = min(max(s.folderColumns, 3), 8)
+        s.folderRows = min(max(s.folderRows, 2), 6)
+        s.animationSpeed = min(max(s.animationSpeed, 0.25), 3.0)
+        s.slideshowInterval = min(max(s.slideshowInterval, 3), 600)
         return s
     }
 }

@@ -10,9 +10,13 @@ struct LaunchpadView: View {
 
     var body: some View {
         ZStack {
-            // Background (desktop blur / theme / image / solid) + dim: fades in/out.
-            BackgroundView(settings: store.settings)
-                .opacity(store.presented ? 1 : 0)
+            // Background (blur / theme / image / solid / slideshow / video) + dim.
+            // Per-page override applies only on the normal paged grid.
+            BackgroundView(
+                settings: store.settings,
+                pageIndex: (store.isSearching || store.openFolderID != nil) ? nil : store.currentPage
+            )
+            .opacity(store.presented ? 1 : 0)
 
             // Foreground content: fades + subtle zoom (classic Launchpad feel).
             ZStack {
@@ -34,8 +38,7 @@ struct LaunchpadView: View {
                     FolderOverlayView(folder: folder)
                 }
             }
-            .opacity(store.presented ? 1 : 0)
-            .scaleEffect(store.presented ? 1 : 0.92)
+            .modifier(OpenTransition(style: store.settings.openAnimation, presented: store.presented))
 
             // Settings (gear) button, top-right.
             VStack {
@@ -59,7 +62,7 @@ struct LaunchpadView: View {
             // off the top of the screen (matches the search field's top clearance).
             .padding(.top, 64)
             .padding(.trailing, 28)
-            .opacity(store.presented && !store.isSearching && store.openFolderID == nil ? 1 : 0)
+            .opacity(store.presented && !store.isSearching && store.openFolderID == nil && !store.showSettings && !store.showOnboarding ? 1 : 0)
 
             // Customization panel.
             if store.showSettings {
@@ -70,16 +73,21 @@ struct LaunchpadView: View {
             if store.showItemEditor {
                 AddEditItemView()
             }
+
+            // First-run onboarding / permissions dialog.
+            if store.showOnboarding {
+                OnboardingView()
+            }
         }
         .onDrop(of: [UTType.text], delegate: RootDropDelegate(store: store))
         .onAppear {
             searchFocused = true
-            withAnimation(.easeOut(duration: 0.24)) { store.presented = true }
+            withAnimation(store.settings.openAnim) { store.presented = true }
         }
         .onChange(of: store.searchText) { _ in store.currentPage = 0 }
-        .animation(.easeInOut(duration: 0.2), value: store.openFolderID)
-        .animation(.easeInOut(duration: 0.2), value: store.showSettings)
-        .animation(.easeInOut(duration: 0.2), value: store.showItemEditor)
+        .animation(store.settings.anim(0.2), value: store.openFolderID)
+        .animation(store.settings.anim(0.2), value: store.showSettings)
+        .animation(store.settings.anim(0.2), value: store.showItemEditor)
     }
 }
 
@@ -108,8 +116,10 @@ struct PagerArea: View {
                 }
             }
             .frame(width: areaSize.width, alignment: .leading)
-            .offset(x: -CGFloat(store.currentPage) * areaSize.width)
-            .animation(.easeInOut(duration: 0.28), value: store.currentPage)
+            // Base page offset + live finger-follow offset during a trackpad swipe.
+            // Page commits are animated via withAnimation in the store, so no implicit
+            // .animation here (which would fight the interactive drag).
+            .offset(x: -CGFloat(store.currentPage) * areaSize.width + store.pageDragOffset)
         }
         .frame(width: areaSize.width, height: areaSize.height)
         .clipped()
@@ -129,24 +139,45 @@ struct PageGrid: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { store.backgroundTap() }
-                .contextMenu {
-                    Button(store.t(.addItem)) { store.beginAddItem() }
-                }
+                .contextMenu { pageMenu }
 
             ForEach(Array(items.enumerated()), id: \.element) { idx, id in
                 tileView(for: id)
                     .frame(width: geo.cellWidth, height: geo.cellHeight)
-                    .position(geo.cellCenter(forIndex: idx))
+                    .position(store.tilePosition(for: id, index: idx, geo: geo, area: areaSize))
                     .opacity(store.draggingID == id ? 0.28 : 1)
             }
         }
         .frame(width: areaSize.width, height: areaSize.height)
-        .animation(.easeInOut(duration: 0.2), value: items)
+        .animation(store.settings.anim(0.2), value: items)
         .onDrop(
             of: [UTType.text],
             delegate: GridDropDelegate(store: store, page: pageIndex, areaSize: areaSize)
         )
     }
+
+    /// Right-click menu on an empty area of the page: add an item, or set this page's
+    /// background (image / preset colour / clear).
+    @ViewBuilder
+    private var pageMenu: some View {
+        Button(store.t(.addItem)) { store.beginAddItem() }
+        Divider()
+        Menu(store.t(.pageBackground)) {
+            Button(store.t(.pageBgImage)) { store.setPageBackgroundImage(pageIndex) }
+            ForEach(PageGrid.pageColorPalette, id: \.hex) { c in
+                Button { store.setPageBackgroundColor(pageIndex, hex: c.hex) } label: { Text(c.name) }
+            }
+            if store.pageHasBackground(pageIndex) {
+                Divider()
+                Button(store.t(.pageBgClear)) { store.clearPageBackground(pageIndex) }
+            }
+        }
+    }
+
+    static let pageColorPalette: [(name: String, hex: String)] = [
+        ("Midnight", "#0B1026"), ("Indigo", "#1A1340"), ("Forest", "#064E3B"),
+        ("Purple", "#7C3AED"), ("Blue", "#0A84FF"), ("Rose", "#9D174D"), ("Graphite", "#2B2B2E"),
+    ]
 
     @ViewBuilder
     private func tileView(for id: String) -> some View {
@@ -245,7 +276,7 @@ struct PageDots: View {
                 Circle()
                     .fill(Color.white.opacity(i == store.currentPage ? 0.95 : 0.32))
                     .frame(width: 8, height: 8)
-                    .onTapGesture { withAnimation { store.currentPage = i } }
+                    .onTapGesture { store.goToPage(i) }
             }
         }
         .frame(height: 14)

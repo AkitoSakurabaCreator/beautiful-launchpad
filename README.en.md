@@ -29,10 +29,17 @@ on click.
 - ✋ **Drag to reorder** — drop near the **edge** of an icon to reorder; page flips at the page edge
 - 💾 **Persistent layout** — saves order and folders to `~/Library/Application Support/Launchpad/layout.json`
 - 🚀 **Click to actually launch** → Launchpad closes automatically after launching
-- 🎞 **Open/close animation** — smooth fade + zoom on open and close (no abrupt disappearance when closing)
+- 🎞 **Open/close animation (customizable)** — pick the transition from **zoom / fade / slide / none**, adjust the speed (0.5–2.0×), and toggle animations on/off entirely
 - 🖥 **Multi-monitor support** — opens on **the screen where the cursor is** at launch time
-- 🎨 **Appearance customization** — background (desktop blur / theme / image / solid color), columns & rows, dimming, icon-label toggle
-- 🧩 **User-defined items** — manually add **apps / scripts & shell commands / URLs** (with an optional custom icon). Add them by right-clicking the background or an icon → "Add Item"
+- 🎨 **Appearance customization** — background (desktop blur / theme / image / **slideshow** / **video** / solid color), blur strength, columns & rows, folder columns & rows, dimming, icon-label toggle
+- 🖼 **Slideshow background** — cross-fade through the images in a folder, sequentially or shuffled (interval 3–300s)
+- 🎬 **Video background** — loop a single video seamlessly, or play a folder of videos as a playlist (sequential or shuffled); mute toggle and volume control included
+- 🧱 **Layout style** — switch the look between Classic / Android / Windows
+- 📌 **Free icon placement** — place icons anywhere instead of on the grid (use "Re-align" to snap back anytime)
+- 🌄 **Per-page background** — right-click a page's empty space to give that page its own image or preset color
+- 🔊 **App launch sound** — play one of 8 system sounds (Pop / Tink / Glass / Hero / Submarine / Ping / Funk / Morse) or a custom sound file when launching
+- 👋 **First-run onboarding** — a welcome screen on first launch that guides you to Privacy settings so images from protected folders (Desktop/Documents) can be used as backgrounds
+- 🧩 **User-defined items** — manually add **apps / scripts & shell commands / URLs / random image (folder)** (with an optional custom icon). Add them by right-clicking the background or an icon → "Add Item"
 - 🖱 **Right-click menu** — edit/delete your custom items, **reveal an app in Finder**, **hide an item**, or add one on the spot
 - 🙈 **Hide / show items** — right-click → "**Hide**" to take an app or custom item out of the grid and search
   (it won't reappear after a rescan); restore it anytime from the **"Hidden Items"** section in Settings via "Show" / "Show All"
@@ -110,7 +117,7 @@ swift build        # compile only
 | Drag an item **to the left/right edge** inside a folder | Flip the folder page |
 | Drag an item **outside the card (dark backdrop)** from inside a folder | Move it out, up one level (the "−" button also works) |
 | Tap a sub-folder / **‹ back** | Drill into it / go up one level |
-| **Right-click** an icon / folder / the background | Context menu (add/edit/delete an item, reveal in Finder, **hide an item**, etc.) |
+| **Right-click** an icon / folder / the background | Context menu (add/edit/delete an item, reveal in Finder, **hide an item**, set **this page's background**, etc.) |
 | ⚙️ button (top-right) / **⌘,** | Open the customization screen |
 | Esc | Close settings/folder → clear search → quit |
 | Click empty space | Quit |
@@ -124,17 +131,28 @@ To reset the layout, use "Reset" on the customization screen, or delete
 
 Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
 
-- **Background**: desktop blur (classic) / theme (6 gradients) / image (pick any wallpaper) / solid color
+- **Background**: desktop blur (classic) / theme (6 gradients) / image (any wallpaper) / slideshow (an image folder) / video (a single file or a folder playlist) / solid color
+  - **Desktop blur**: adjust 0–100% with the "Blur strength" slider
+  - **Slideshow**: pick a folder, then set shuffle on/off and the interval (3–300s); images cross-fade
+  - **Video**: pick a single video or a folder (shuffle available for a folder). Turn on "Play video audio" to hear sound and adjust the volume
 - **Dimming**: opacity of the dark overlay on top of the background
-- **Layout**: columns (4–10) and rows (3–8)
+- **Layout**: columns (4–10) and rows (3–8), plus folder columns (3–8) and rows (2–6)
+- **Layout style**: Classic / Android / Windows
 - **Icon labels**: toggle labels ON/OFF
+- **Animation**: enable/disable, open/close effect (zoom / fade / slide / none), and speed (0.5–2.0×)
+- **Free icon placement**: turn on to place icons anywhere; turn off to auto-align like before ("Re-align" snaps everything back)
+- **Sound**: toggle the app launch sound, choose a system sound (8 options), or set a custom sound file
 - **Language**: Japanese / English / follow-system (switches without relaunch)
 - **Update**: toggle automatic check at launch, plus a manual "Check for Updates…"
 
 ### Adding items / folder colors
 
-- **Add an item**: **right-click the background or an icon → "Add Item…"** to register an app, a script/shell command, or a URL (a custom icon can be set too). Scripts & commands run through a shell (must be executable).
+- **Add an item**: **right-click the background or an icon → "Add Item…"** to register an app, a script/shell command, a URL, or a **random image (folder)** (a custom icon can be set too). Scripts & commands run through a shell (must be executable). "Random image (folder)" opens a random picture from the chosen folder each time you click it.
 - **Folder color**: pick a tint from the color swatches in the open-folder view. The leading "−" swatch resets it to the default (no tint).
+
+### Per-page background
+
+- **Right-click a page's empty space → "This page's background"** to give that single page its own image or preset color. Use "Clear background" to revert to the shared background.
 
 ### Hiding / restoring items
 
@@ -169,16 +187,19 @@ LaunchPad/
 └── Sources/Launchpad/
     ├── LaunchpadApp.swift        # @main / AppDelegate / full-screen window / key & scroll monitoring
     ├── Support.swift             # GridGeometry / VisualEffectView / chunk
-    ├── Models.swift              # AppInfo / Folder / CustomItem / persistence models (order, folders, customItems, hidden)
+    ├── Models.swift              # AppInfo / Folder / CustomItem / enums / persistence & settings models (order, folders, hidden, free placement, per-page backgrounds, all AppSettings)
     ├── AppScanner.swift          # installed-app scanning + icon retrieval
-    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / persistence
+    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / free placement / per-page backgrounds / launch sound / persistence
     ├── LaunchpadView.swift       # root / pager / grid / search / dots / right-click menu
     ├── IconViews.swift           # app/folder tile rendering (folder mini-preview)
     ├── FolderViews.swift         # folder overlay (nesting, pagination, color)
     ├── DragDrop.swift            # DropDelegate (center = folder / edge = reorder & page-flip)
-    ├── CustomItems.swift         # add/edit overlay for user items (app / script / URL)
-    ├── SettingsView.swift        # customization screen (background, layout, language, update, hidden items, export/import)
-    ├── Theming.swift             # background rendering (desktop blur / theme / image / solid)
+    ├── CustomItems.swift         # add/edit overlay for user items (app / script / URL / random image)
+    ├── Animations.swift          # animation policy (speed multiplier, open/close transitions, enable/disable — centralized)
+    ├── BackgroundMedia.swift     # video background (single loop / folder playlist) and image slideshow background
+    ├── Onboarding.swift          # first-run welcome / permissions dialog
+    ├── SettingsView.swift        # customization screen (background, layout, layout style, animation, sound, language, update, hidden items, export/import)
+    ├── Theming.swift             # background rendering (desktop blur / theme / image / solid + blur strength)
     ├── Localization.swift        # in-code i18n table (Japanese / English / follow-system, live switch)
     └── Updater.swift             # Sparkle auto-update (dismiss guard for the full-screen overlay)
 ```

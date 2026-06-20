@@ -30,6 +30,15 @@ enum Theming {
         ThemePreset(id: 5, name: "Rose",
                     colors: [Color(hex: "#9D174D"), Color(hex: "#7C3AED"), Color(hex: "#1E1B4B")],
                     start: .topLeading, end: .bottomTrailing),
+        // Neon cyberpunk: cyan → violet → hot-pink over a near-black base.
+        ThemePreset(id: 6, name: "Cyber",
+                    colors: [Color(hex: "#00F0FF"), Color(hex: "#7A2BFF"),
+                             Color(hex: "#FF2D95"), Color(hex: "#070217")],
+                    start: .topLeading, end: .bottomTrailing),
+        // Frosted glass: cool pale cyan → frosty white → soft lavender.
+        ThemePreset(id: 7, name: "Glass",
+                    colors: [Color(hex: "#8FB8D6"), Color(hex: "#DCEAF2"), Color(hex: "#B7C4E8")],
+                    start: .topLeading, end: .bottomTrailing),
     ]
 
     static func preset(_ index: Int) -> ThemePreset {
@@ -69,40 +78,114 @@ extension Color {
     }
 }
 
-/// Full-screen background, driven by the user's appearance settings.
+/// Full-screen background, driven by the user's appearance settings. When a per-page
+/// override exists for `pageIndex` it takes precedence over the global background.
 struct BackgroundView: View {
     let settings: AppSettings
+    /// Page currently shown (for per-page overrides). `nil` = use the global background
+    /// (e.g. while searching or with a folder open).
+    var pageIndex: Int? = nil
+
+    /// The per-page override for the current page, if any.
+    private var pageOverride: PageBackground? {
+        guard let p = pageIndex else { return nil }
+        return settings.pageBackgrounds["\(p)"]
+    }
 
     var body: some View {
         ZStack {
-            switch settings.backgroundKind {
-            case .desktopBlur:
-                VisualEffectView().ignoresSafeArea()
-            case .theme:
-                Theming.gradient(settings.themeIndex).ignoresSafeArea()
-            case .solid:
-                Color(hex: settings.solidColorHex).ignoresSafeArea()
-            case .image:
-                if let path = settings.wallpaperPath,
-                   let img = NSImage(contentsOfFile: path) {
-                    // A fill-image MUST be pinned to an exact size. Otherwise the
-                    // overflow inflates the parent ZStack and pushes the Spacer-
-                    // positioned gear button off the top-right of the screen.
-                    // GeometryReader yields the exact container size; framing the
-                    // image to it + clipping guarantees it is never larger.
-                    GeometryReader { geo in
-                        Image(nsImage: img)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .clipped()
-                    }
-                    .ignoresSafeArea()
-                } else {
-                    Theming.gradient(settings.themeIndex).ignoresSafeArea()
-                }
+            if let pb = pageOverride {
+                pageOverrideView(pb)
+            } else {
+                globalBackground
             }
             Color.black.opacity(settings.dim).ignoresSafeArea()
         }
+    }
+
+    @ViewBuilder
+    private func pageOverrideView(_ pb: PageBackground) -> some View {
+        switch pb.kind {
+        case .color:
+            Color(hex: pb.colorHex ?? "#000000").ignoresSafeArea()
+        case .image:
+            if let path = pb.imagePath, let img = NSImage(contentsOfFile: path) {
+                fillImage(img)
+            } else {
+                globalBackground
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var globalBackground: some View {
+        switch settings.backgroundKind {
+        case .desktopBlur:
+            // The borderless window is transparent, so the real desktop shows through
+            // crisply. A frosted-glass overlay is cross-faded over it by `blurIntensity`
+            // (0 = no blur / crisp desktop, 1 = full frosted glass).
+            ZStack {
+                Color.clear
+                VisualEffectView(material: .hudWindow)
+                    .opacity(settings.blurIntensity)
+            }
+            .ignoresSafeArea()
+        case .theme:
+            Theming.gradient(settings.themeIndex).ignoresSafeArea()
+        case .solid:
+            Color(hex: settings.solidColorHex).ignoresSafeArea()
+        case .image:
+            if let path = settings.wallpaperPath, let img = NSImage(contentsOfFile: path) {
+                // `.id(path)` forces a fresh view when the chosen image changes.
+                fillImage(img).id(path)
+            } else {
+                Theming.gradient(settings.themeIndex).ignoresSafeArea()
+            }
+        case .slideshow:
+            if let folder = settings.slideshowFolder {
+                SlideshowBackgroundView(folder: folder,
+                                        interval: settings.slideshowInterval,
+                                        random: settings.slideshowRandom,
+                                        animated: settings.animationsEnabled)
+                    // Recreate when the folder changes so a newly picked folder loads
+                    // immediately (preserved @State otherwise kept the old images).
+                    .id(folder)
+                    .ignoresSafeArea()
+            } else {
+                Theming.gradient(settings.themeIndex).ignoresSafeArea()
+            }
+        case .video:
+            if let folder = settings.videoFolder {
+                // Folder playlist (ordered / shuffled).
+                VideoFolderBackgroundView(folder: folder,
+                                          random: settings.videoRandom,
+                                          muted: settings.videoMuted,
+                                          volume: settings.videoVolume,
+                                          fallback: Theming.gradient(settings.themeIndex))
+                    .ignoresSafeArea()
+            } else if let path = settings.videoPath, FileManager.default.fileExists(atPath: path) {
+                // Single looping clip. `.id(path)` swaps the player when the file
+                // changes; mute/volume are applied in place so toggling keeps position.
+                VideoBackgroundView(paths: [path], muted: settings.videoMuted, volume: settings.videoVolume)
+                    .id("vfile:\(path)")
+                    .ignoresSafeArea()
+            } else {
+                Theming.gradient(settings.themeIndex).ignoresSafeArea()
+            }
+        }
+    }
+
+    /// A fill-image MUST be pinned to an exact size; otherwise the overflow inflates
+    /// the parent ZStack and pushes the Spacer-positioned gear button off-screen.
+    private func fillImage(_ img: NSImage) -> some View {
+        GeometryReader { geo in
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+        }
+        .ignoresSafeArea()
     }
 }

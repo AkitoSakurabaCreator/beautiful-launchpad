@@ -128,6 +128,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Don't dismiss while Sparkle is presenting its own update window, or the
         // overlay would close underneath it and kill the update flow.
         guard !updater.isShowingUpdateUI else { return }
+        // Keep the overlay alive while the first-run onboarding is up — otherwise
+        // tapping "Open Privacy Settings" (which activates System Settings) would
+        // terminate us mid-onboarding.
+        guard !store.showOnboarding else { return }
         store.requestClose()
     }
 

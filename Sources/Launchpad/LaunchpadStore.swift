@@ -19,10 +19,21 @@ final class LaunchpadStore: ObservableObject {
     @Published var folders: [String: Folder] = [:]
     /// Ids the user has hidden (excluded from grid/folders/search; restorable in Settings).
     @Published var hidden: Set<String> = []
+    /// Free-placement coordinates (normalized 0…1 within the page area) keyed by id;
+    /// used only when settings.freePlacement is on.
+    @Published var freePositions: [String: CGPoint] = [:]
+    /// Free-placement page assignment per id (used only in free mode).
+    @Published var freePages: [String: Int] = [:]
+    /// Last pointer location seen during a drag (page container space) — used to drop
+    /// an item at an exact spot in free-placement mode.
+    private var lastDragPoint: CGPoint = .zero
 
     // UI state
     @Published var searchText: String = ""
     @Published var currentPage: Int = 0
+    /// Live horizontal offset while a trackpad swipe is in progress (finger-follow
+    /// paging); 0 at rest. Committed/snapped on gesture end.
+    @Published var pageDragOffset: CGFloat = 0
 
     /// Open-folder navigation stack (supports nested folders). The last element is
     /// the folder currently shown in the overlay; an empty stack means no overlay.
@@ -39,6 +50,8 @@ final class LaunchpadStore: ObservableObject {
     // Appearance / customization
     @Published var settings = AppSettings()
     @Published var showSettings = false
+    /// First-run onboarding / permissions dialog.
+    @Published var showOnboarding = false
 
     /// Custom-item add/edit overlay. `editingItemId == nil` while adding a new one.
     @Published var showItemEditor = false
@@ -72,7 +85,6 @@ final class LaunchpadStore: ObservableObject {
     private var lastFlip = Date.distantPast
     private var lastFolderFlip = Date.distantPast
     private var scrollAccum: CGFloat = 0
-    private var scrollLatched = false
 
     // MARK: - Catalogue lookups
 
@@ -96,8 +108,28 @@ final class LaunchpadStore: ObservableObject {
         mergeCustomIntoCatalogue(persisted?.customItems ?? [])
         // Load hidden ids before reconcile so they are excluded from the layout.
         hidden = Set(persisted?.hidden ?? [])
+        freePositions = persisted?.freePositions ?? [:]
+        freePages = persisted?.freePages ?? [:]
         reconcile(scanned: catalogueSorted(), persisted: persisted)
+        sanitizeFreePlacement()
         clampPage()
+        // Show the first-run onboarding / permissions dialog once.
+        showOnboarding = !settings.onboardingShown
+    }
+
+    /// Number of apps/items currently in the catalogue (shown in onboarding).
+    var catalogueCount: Int { appsById.count }
+
+    func dismissOnboarding() {
+        updateSettings { $0.onboardingShown = true }
+        showOnboarding = false
+    }
+
+    /// Open System Settings → Privacy & Security so the user can grant folder access.
+    func openPrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     /// Catalogue entries sorted by name (deterministic append order for reconcile).
@@ -253,7 +285,9 @@ final class LaunchpadStore: ObservableObject {
             order: order,
             folders: Array(folders.values),
             customItems: Array(customById.values),
-            hidden: Array(hidden)
+            hidden: Array(hidden),
+            freePositions: freePositions,
+            freePages: freePages
         )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
@@ -308,7 +342,9 @@ final class LaunchpadStore: ObservableObject {
                 order: order,
                 folders: Array(folders.values),
                 customItems: Array(customById.values),
-                hidden: Array(hidden)
+                hidden: Array(hidden),
+                freePositions: freePositions,
+                freePages: freePages
             ),
             settings: settings
         )
@@ -335,7 +371,10 @@ final class LaunchpadStore: ObservableObject {
         // in the edit sheet and the right-click menu.
         mergeCustomIntoCatalogue(bundle.layout.customItems)
         hidden = Set(bundle.layout.hidden)
+        freePositions = bundle.layout.freePositions
+        freePages = bundle.layout.freePages
         applyImportedLayout(bundle.layout)
+        sanitizeFreePlacement()
         save()
         currentPage = 0
         clampPage()
@@ -355,6 +394,64 @@ final class LaunchpadStore: ObservableObject {
             $0.wallpaperPath = url.path
             $0.backgroundKind = .image
         }
+    }
+
+    func chooseSlideshowFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings {
+            $0.slideshowFolder = url.path
+            $0.backgroundKind = .slideshow
+        }
+    }
+
+    func chooseVideo() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings {
+            $0.videoPath = url.path
+            $0.videoFolder = nil          // single file overrides the folder playlist
+            $0.backgroundKind = .video
+        }
+    }
+
+    /// Choose a folder of videos played as a playlist (ordered / shuffled).
+    func chooseVideoFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings {
+            $0.videoFolder = url.path
+            $0.videoPath = nil            // folder playlist overrides a single file
+            $0.backgroundKind = .video
+        }
+    }
+
+    // MARK: - Per-page background overrides
+
+    func pageHasBackground(_ page: Int) -> Bool { settings.pageBackgrounds["\(page)"] != nil }
+
+    func setPageBackgroundColor(_ page: Int, hex: String) {
+        updateSettings { $0.pageBackgrounds["\(page)"] = PageBackground(kind: .color, colorHex: hex, imagePath: nil) }
+    }
+
+    func setPageBackgroundImage(_ page: Int) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings { $0.pageBackgrounds["\(page)"] = PageBackground(kind: .image, colorHex: nil, imagePath: url.path) }
+    }
+
+    func clearPageBackground(_ page: Int) {
+        updateSettings { $0.pageBackgrounds["\(page)"] = nil }
     }
 
     // MARK: - Derived data
@@ -378,8 +475,29 @@ final class LaunchpadStore: ObservableObject {
     }
 
     func pages(geo: GridGeometry) -> [[String]] {
-        let items = isSearching ? searchResults() : topLevelTiles()
+        if isSearching { return chunk(searchResults(), geo.pageSize) }
+        let items = topLevelTiles()
+        if settings.freePlacement { return freeModePages(items, geo: geo) }
         return chunk(items, geo.pageSize)
+    }
+
+    /// In free-placement mode, group items by their assigned page (explicit free page,
+    /// else their natural grid page) and always append one spare empty page at the end
+    /// so an item can be dragged onto a brand-new page.
+    private func freeModePages(_ items: [String], geo: GridGeometry) -> [[String]] {
+        let size = max(1, geo.pageSize)
+        func pageOf(_ id: String, _ idx: Int) -> Int {
+            min(max(freePages[id] ?? (idx / size), 0), Self.maxFreePage)
+        }
+        var maxPage = 0
+        for (i, id) in items.enumerated() { maxPage = max(maxPage, pageOf(id, i)) }
+        let count = min(maxPage + 2, Self.maxFreePage + 2)   // +1 used range, +1 spare; capped
+        var result = Array(repeating: [String](), count: count)
+        for (i, id) in items.enumerated() {
+            let p = min(max(0, pageOf(id, i)), count - 1)
+            result[p].append(id)
+        }
+        return result
     }
 
     func clampPage() {
@@ -390,10 +508,55 @@ final class LaunchpadStore: ObservableObject {
     // MARK: - Actions
 
     func launch(_ id: String) {
+        playLaunchSound()
         if let c = customById[id] { launchCustom(c); dismiss(); return }
         guard let info = appsById[id] else { return }
         NSWorkspace.shared.open(info.url)
         dismiss()
+    }
+
+    /// Built-in macOS system sounds offered for the launch sound.
+    static let availableSounds = ["Pop", "Tink", "Glass", "Hero", "Submarine", "Ping", "Funk", "Morse"]
+
+    /// Play the configured launch sound, if enabled. Played via a detached `afplay`
+    /// process so it keeps sounding even though the Launchpad terminates itself
+    /// immediately after launching the target (an in-process NSSound would be cut).
+    /// A user-chosen custom sound file takes precedence over the built-in presets.
+    private func playLaunchSound() {
+        guard settings.launchSound else { return }
+        let path: String
+        if let custom = settings.launchSoundPath, FileManager.default.fileExists(atPath: custom) {
+            path = custom
+        } else {
+            // Validate the preset name against the known list (an imported settings file
+            // could carry an arbitrary string); fall back to a safe default.
+            let name = Self.availableSounds.contains(settings.launchSoundName) ? settings.launchSoundName : "Pop"
+            path = "/System/Library/Sounds/\(name).aiff"
+        }
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
+        p.arguments = [path]
+        try? p.run()
+    }
+
+    /// Pick a custom sound file (mp3/wav/aiff/m4a/caf) for the launch sound.
+    func chooseLaunchSound() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audio, .mp3, .wav, .aiff, .mpeg4Audio]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings {
+            $0.launchSoundPath = url.path
+            $0.launchSound = true
+        }
+        // Preview the chosen sound once.
+        playLaunchSound()
+    }
+
+    /// Revert to the built-in preset launch sound.
+    func clearLaunchSound() {
+        updateSettings { $0.launchSoundPath = nil }
     }
 
     private func launchCustom(_ c: CustomItem) {
@@ -411,6 +574,11 @@ final class LaunchpadStore: ObservableObject {
             // target, which is either a shell-quoted file path or a free command line.
             task.arguments = ["-lc", c.target]
             do { try task.run() } catch { NSSound.beep() }
+        case .randomImage:
+            let folder = c.target.trimmingCharacters(in: CharacterSet(charactersIn: "'\" "))
+            if let pick = imageFiles(in: folder).randomElement() {
+                NSWorkspace.shared.open(URL(fileURLWithPath: pick))
+            } else { NSSound.beep() }
         }
     }
 
@@ -492,7 +660,7 @@ final class LaunchpadStore: ObservableObject {
         switch kind {
         case .url:
             return URL(string: target)?.host ?? target
-        case .app, .script:
+        case .app, .script, .randomImage:
             let last = (target as NSString).lastPathComponent
             return last.isEmpty ? target : ((last as NSString).deletingPathExtension)
         }
@@ -573,6 +741,8 @@ final class LaunchpadStore: ObservableObject {
             return symbolImage(c.kind == .app ? "app.dashed" : "terminal")
         case .url:
             return symbolImage("safari")
+        case .randomImage:
+            return symbolImage("photo.on.rectangle.angled")
         }
     }
 
@@ -603,8 +773,10 @@ final class LaunchpadStore: ObservableObject {
     func requestClose() {
         guard !closing else { return }
         closing = true
-        withAnimation(.easeIn(duration: 0.2)) { presented = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
+        let closeAnim = settings.openAnim
+        withAnimation(closeAnim) { presented = false }
+        let delay = closeAnim == nil ? 0.0 : settings.openCloseDuration
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.02) { [weak self] in
             self?.onDismiss?()
         }
     }
@@ -646,12 +818,17 @@ final class LaunchpadStore: ObservableObject {
         // When a folder is open, paging targets the folder's contents instead.
         if !folderPath.isEmpty { folderNextPage(); return }
         let count = pages(geo: geo).count
-        if currentPage < count - 1 { currentPage += 1 }
+        if currentPage < count - 1 { withAnimation(settings.spring(0.4)) { currentPage += 1 } }
     }
 
     func prevPage() {
         if !folderPath.isEmpty { folderPrevPage(); return }
-        if currentPage > 0 { currentPage -= 1 }
+        if currentPage > 0 { withAnimation(settings.spring(0.4)) { currentPage -= 1 } }
+    }
+
+    /// Jump to a specific top-level page (page-dot taps), animated.
+    func goToPage(_ i: Int) {
+        withAnimation(settings.spring(0.4)) { currentPage = i }
     }
 
     func folderNextPage() {
@@ -663,46 +840,71 @@ final class LaunchpadStore: ObservableObject {
         if folderPage > 0 { folderPage -= 1 }
     }
 
-    /// Page navigation from scroll/swipe. Flips at most once per physical swipe to
-    /// avoid the double-jump caused by inertial (momentum) scroll events.
+    /// Page navigation from scroll/swipe.
+    ///
+    /// Trackpad swipes are now *interactive*: the page tracks the fingers in real
+    /// time (`pageDragOffset`) and only commits to the next/previous page on release
+    /// if dragged past a distance threshold — otherwise it springs back. This fixes
+    /// the old behaviour where a partial swipe could jump a page without following
+    /// the cursor. Mouse wheels (no phase info) keep a debounced discrete flip.
     func handleScrollEvent(deltaX: CGFloat,
                            deltaY: CGFloat,
                            phase: NSEvent.Phase,
                            momentum: NSEvent.Phase,
                            precise: Bool) {
         guard !showSettings else { return }
-        // When a folder is open, scroll flips the folder's pages (nextPage/prevPage
-        // route there automatically); otherwise it flips the top-level pages.
-        // Ignore inertial momentum entirely — it is what produced the extra flip.
-        if !momentum.isEmpty { return }
+
+        // Folder open → discrete flip of the folder's own pages (no finger-follow).
+        if !folderPath.isEmpty {
+            if !momentum.isEmpty { return }
+            let now = Date()
+            guard now.timeIntervalSince(lastFlip) > 0.4 else { return }
+            let d = abs(deltaX) >= abs(deltaY) ? deltaX : deltaY
+            if d < -1 { lastFlip = now; folderNextPage() }
+            else if d > 1 { lastFlip = now; folderPrevPage() }
+            return
+        }
 
         if precise && !phase.isEmpty {
-            // Trackpad: latch one flip per gesture (began → changed… → ended).
+            if !momentum.isEmpty { return }   // ignore inertial tail
+            let width = areaSize.width
             if phase.contains(.began) {
                 scrollAccum = 0
-                scrollLatched = false
+                pageDragOffset = 0
             }
-            if phase.contains(.changed), !scrollLatched {
+            if phase.contains(.changed) {
                 if abs(deltaX) >= abs(deltaY) { scrollAccum += deltaX }
-                if abs(scrollAccum) > 36 {
-                    if scrollAccum < 0 { nextPage() } else { prevPage() }
-                    scrollLatched = true
-                }
+                pageDragOffset = rubberBanded(scrollAccum, width: width)
             }
             if phase.contains(.ended) || phase.contains(.cancelled) {
+                let count = pages(geo: geo).count
+                let threshold = max(60, width * 0.16)
+                var target = currentPage
+                if scrollAccum <= -threshold, currentPage < count - 1 { target += 1 }
+                else if scrollAccum >= threshold, currentPage > 0 { target -= 1 }
                 scrollAccum = 0
-                scrollLatched = false
+                withAnimation(settings.spring(0.4)) {
+                    currentPage = target
+                    pageDragOffset = 0
+                }
             }
         } else {
-            // Classic mouse wheel (no phase info): debounce by time. Use whichever
-            // axis dominates so a plain vertical-only wheel still flips pages
-            // (most mice emit deltaY only; horizontal needs Shift).
+            // Classic mouse wheel (no phase info): debounced discrete flip.
+            if !momentum.isEmpty { return }
             let now = Date()
             guard now.timeIntervalSince(lastFlip) > 0.45 else { return }
             let delta = abs(deltaX) >= abs(deltaY) ? deltaX : deltaY
             if delta < -1 { lastFlip = now; nextPage() }
             else if delta > 1 { lastFlip = now; prevPage() }
         }
+    }
+
+    /// Apply edge resistance so swiping past the first/last page rubber-bands.
+    private func rubberBanded(_ accum: CGFloat, width: CGFloat) -> CGFloat {
+        let count = pages(geo: geo).count
+        if currentPage == 0 && accum > 0 { return accum * 0.35 }
+        if currentPage >= count - 1 && accum < 0 { return accum * 0.35 }
+        return accum
     }
 
     // MARK: - Folder mutations
@@ -937,6 +1139,19 @@ final class LaunchpadStore: ObservableObject {
     /// (in the page container's coordinate space).
     func updateDragPreview(point: CGPoint, containerSize: CGSize) {
         guard let dragging = draggingID else { return }
+        lastDragPoint = point
+
+        // Free-placement mode: no reorder/merge preview — the item simply lands where
+        // it is dropped (handled in commitDrop). Edge zones still flip pages so an item
+        // can be carried to another (or a new) page.
+        if settings.freePlacement {
+            let fe: CGFloat = 70
+            if point.x < fe { flip(next: false) }
+            else if point.x > containerSize.width - fe { flip(next: true) }
+            folderCandidateID = nil
+            dragPreviewOrder = order
+            return
+        }
 
         // Edge zones flip pages mid-drag.
         let edge: CGFloat = 70
@@ -1006,6 +1221,17 @@ final class LaunchpadStore: ObservableObject {
     func commitDrop() {
         guard let dragging = draggingID else { endDragReset(); return }
 
+        // Free placement: store the dropped position (normalized) + the page it landed
+        // on (the user may have carried it to another / a new page mid-drag).
+        if settings.freePlacement {
+            setFreePosition(dragging, point: lastDragPoint, container: areaSize)
+            freePages[dragging] = min(max(currentPage, 0), Self.maxFreePage)
+            endDragReset()
+            clampPage()
+            save()
+            return
+        }
+
         if let target = folderCandidateID, target != dragging {
             if isFolder(target) {
                 addToFolder(child: dragging, folderId: target)   // app or folder → folder
@@ -1027,10 +1253,54 @@ final class LaunchpadStore: ObservableObject {
         endDragReset()
     }
 
+    // MARK: - Free placement
+
+    /// Store a normalized (0…1) free position for `id` from a drop point in page space.
+    func setFreePosition(_ id: String, point: CGPoint, container: CGSize) {
+        guard container.width > 0, container.height > 0 else { return }
+        let x = min(max(point.x / container.width, 0), 1)
+        let y = min(max(point.y / container.height, 0), 1)
+        freePositions[id] = CGPoint(x: x, y: y)
+    }
+
+    /// Where a tile should be drawn: its free position (free-placement mode) or its
+    /// natural grid-slot centre.
+    func tilePosition(for id: String, index: Int, geo: GridGeometry, area: CGSize) -> CGPoint {
+        if settings.freePlacement, let p = freePositions[id] {
+            return CGPoint(x: p.x * area.width, y: p.y * area.height)
+        }
+        return geo.cellCenter(forIndex: index)
+    }
+
+    /// Drop all free positions/pages and return to the auto-aligned grid.
+    func realignToGrid() {
+        freePositions.removeAll()
+        freePages.removeAll()
+        clampPage()
+        save()
+    }
+
+    /// Upper bound on free-placement page index (defense against a hand-edited /
+    /// imported file inflating `freeModePages`'s `maxPage + 2` allocation).
+    static let maxFreePage = 63
+
+    /// Prune free-placement data to live ids and clamp coordinates/pages into range so
+    /// an untrusted layout file can't cause off-screen icons or a huge allocation.
+    private func sanitizeFreePlacement() {
+        let valid = Set(order)
+        freePositions = freePositions
+            .filter { valid.contains($0.key) }
+            .mapValues { CGPoint(x: min(max($0.x, 0), 1), y: min(max($0.y, 0), 1)) }
+        freePages = freePages
+            .filter { valid.contains($0.key) }
+            .mapValues { min(max($0, 0), Self.maxFreePage) }
+    }
+
     private func flip(next: Bool) {
         let now = Date()
         guard now.timeIntervalSince(lastFlip) > 0.6 else { return }
-        let count = chunk(order, geo.pageSize).count
+        // Use the live page count (free mode adds a spare trailing page to flip onto).
+        let count = pages(geo: geo).count
         if next {
             if currentPage < count - 1 { currentPage += 1; lastFlip = now }
         } else {
