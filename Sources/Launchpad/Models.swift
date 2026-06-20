@@ -33,6 +33,83 @@ struct CustomItem: Identifiable, Codable, Hashable {
     var iconPath: String? = nil
 }
 
+/// Kinds of widget tiles the user can place on the grid (free-positioned & resizable).
+enum WidgetKind: String, Codable, CaseIterable {
+    case clock     // live digital clock
+    case date      // current date + weekday
+    case notes     // editable sticky note
+    case battery   // battery percentage / charging
+    case system    // memory usage + uptime
+    case weather   // current conditions (network)
+    case image     // user-picked still image (`text` = file path)
+    case video     // user-picked looping video (`text` = file path)
+}
+
+/// A user-placed widget. Position/size are normalized (0…1) within the page area so
+/// they survive window/display size changes. `id` is `"widget-<uuid>"`.
+struct WidgetItem: Identifiable, Codable, Hashable {
+    var id: String
+    var kind: WidgetKind
+    var page: Int = 0
+    var x: Double = 0.5       // normalized centre
+    var y: Double = 0.5
+    var w: Double = 0.22      // normalized size
+    var h: Double = 0.16
+    var text: String = ""     // notes content · image/video file path · per-widget config
+    /// Hide the card background/border (for transparent images, alpha videos, overlays).
+    var transparent: Bool = false
+    /// Video widget: mute its audio (default on).
+    var muted: Bool = true
+    /// Video widget: audio volume 0…1 (used when not muted).
+    var volume: Double = 0.6
+    /// Content opacity 0…1 (how transparent the image/video is drawn). 1 = opaque.
+    var opacity: Double = 1.0
+    /// Rotation in degrees (−180…180).
+    var rotation: Double = 0
+    /// When locked: no hover UI, no drag/resize. Unlock via right-click menu.
+    var locked: Bool = false
+
+    /// Clamp every field into a safe range (defends against hand-edited files).
+    func normalized() -> WidgetItem {
+        var v = self
+        v.page = min(max(v.page, 0), 63)
+        v.x = min(max(v.x, 0), 1)
+        v.y = min(max(v.y, 0), 1)
+        v.w = min(max(v.w, 0.08), 0.9)
+        v.h = min(max(v.h, 0.06), 0.9)
+        v.volume = min(max(v.volume, 0), 1)
+        v.opacity = min(max(v.opacity, 0.05), 1)
+        v.rotation = min(max(v.rotation, -180), 180)
+        return v
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, page, x, y, w, h, text, transparent, muted, volume, opacity, rotation, locked
+    }
+}
+
+extension WidgetItem {
+    // Decode-tolerant: tolerate files that predate newer fields so a single older
+    // widget can't wipe the whole array.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = (try? c.decode(WidgetKind.self, forKey: .kind)) ?? .clock
+        page = (try? c.decode(Int.self, forKey: .page)) ?? 0
+        x = (try? c.decode(Double.self, forKey: .x)) ?? 0.5
+        y = (try? c.decode(Double.self, forKey: .y)) ?? 0.5
+        w = (try? c.decode(Double.self, forKey: .w)) ?? 0.22
+        h = (try? c.decode(Double.self, forKey: .h)) ?? 0.16
+        text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        transparent = (try? c.decode(Bool.self, forKey: .transparent)) ?? false
+        muted = (try? c.decode(Bool.self, forKey: .muted)) ?? true
+        volume = (try? c.decode(Double.self, forKey: .volume)) ?? 0.6
+        opacity = (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0
+        rotation = (try? c.decode(Double.self, forKey: .rotation)) ?? 0
+        locked = (try? c.decode(Bool.self, forKey: .locked)) ?? false
+    }
+}
+
 /// A user-created folder grouping several apps.
 struct Folder: Identifiable, Codable, Hashable {
     var id: String
@@ -58,19 +135,23 @@ struct PersistedLayout: Codable {
     /// Free-placement page assignment per id (which page the item sits on). Lets the
     /// user spread items across pages in free mode independent of `order`.
     var freePages: [String: Int]
+    /// User-placed widgets (free-positioned & resizable).
+    var widgets: [WidgetItem]
 
     init(order: [String], folders: [Folder], customItems: [CustomItem] = [],
-         hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:]) {
+         hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:],
+         widgets: [WidgetItem] = []) {
         self.order = order
         self.folders = folders
         self.customItems = customItems
         self.hidden = hidden
         self.freePositions = freePositions
         self.freePages = freePages
+        self.widgets = widgets
     }
 
     enum CodingKeys: String, CodingKey {
-        case order, folders, customItems, hidden, freePositions, freePages
+        case order, folders, customItems, hidden, freePositions, freePages, widgets
     }
 
     // Tolerate older files that predate newer fields (and partial/hand-edited JSON):
@@ -83,6 +164,7 @@ struct PersistedLayout: Codable {
         hidden = (try? c.decode([String].self, forKey: .hidden)) ?? []
         freePositions = (try? c.decode([String: CGPoint].self, forKey: .freePositions)) ?? [:]
         freePages = (try? c.decode([String: Int].self, forKey: .freePages)) ?? [:]
+        widgets = (try? c.decode([WidgetItem].self, forKey: .widgets)) ?? []
     }
 }
 
@@ -110,6 +192,7 @@ enum LayoutStyle: String, Codable, CaseIterable {
     case classic   // macOS Launchpad
     case android   // rounded/larger icons, label-forward
     case windows   // tile-like square icons, denser grid
+    case cyber     // neon-bordered glowing tiles, dark glass folders, cyan labels
 }
 
 /// A per-page background override (used when the user customises individual pages).

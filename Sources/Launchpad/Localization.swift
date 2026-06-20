@@ -35,10 +35,12 @@ enum L {
         case animation, animationsEnabled, animationSpeed, openAnimation
         case animZoom, animFade, animSlide, animNone
         case pageBackground, pageBgImage, pageBgClear
-        case layoutStyle, layoutClassic, layoutAndroid, layoutWindows
+        case layoutStyle, layoutClassic, layoutAndroid, layoutWindows, layoutCyber
         case freePlacement, freePlacementNote, realign, kindRandomImage, randomImageHint
         case onboardingTitle, onboardingBody, openPrivacy, continueButton
         case chooseSound, clearSound, customSound, videoSound, newPage, volume
+        case addWidget, widgetClock, widgetDate, widgetNotes, widgetBattery, widgetSystem, widgetWeather
+        case widgetImage, widgetVideo, widgetTransparent, widgetShowWindow, mute, lock, unlock
     }
 
     /// Resolve the concrete language from the user's choice and the OS locale.
@@ -148,6 +150,7 @@ enum L {
         .layoutClassic:       ("クラシック", "Classic"),
         .layoutAndroid:       ("Android風", "Android"),
         .layoutWindows:       ("Windows風", "Windows"),
+        .layoutCyber:         ("サイバー", "Cyber"),
         .freePlacement:       ("アイコンを自由配置", "Free icon placement"),
         .freePlacementNote:   ("オンにするとアイコンを好きな位置に置けます。オフで従来の自動整列に戻ります。",
                                "When on, place icons anywhere. Turn off to auto-align like before."),
@@ -166,5 +169,19 @@ enum L {
         .videoSound:          ("動画の音を出す", "Play video audio"),
         .newPage:             ("新しいページ", "New page"),
         .volume:              ("音量", "Volume"),
+        .addWidget:           ("ウィジェットを追加", "Add Widget"),
+        .widgetClock:         ("時計", "Clock"),
+        .widgetDate:          ("日付", "Date"),
+        .widgetNotes:         ("メモ", "Notes"),
+        .widgetBattery:       ("バッテリー", "Battery"),
+        .widgetSystem:        ("システム", "System"),
+        .widgetWeather:       ("天気", "Weather"),
+        .widgetImage:         ("画像", "Image"),
+        .widgetVideo:         ("動画", "Video"),
+        .widgetTransparent:   ("ウィンドウ非表示", "Hide window"),
+        .widgetShowWindow:    ("ウィンドウ表示", "Show window"),
+        .mute:                ("ミュート", "Mute"),
+        .lock:                ("ロック", "Lock"),
+        .unlock:              ("ロック解除", "Unlock"),
     ]
 }

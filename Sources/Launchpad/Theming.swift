@@ -51,6 +51,14 @@ enum Theming {
     }
 }
 
+/// Neon accent palette for the Cyber layout style (icons / folders / widgets).
+enum CyberPalette {
+    static let neon = Color(hex: "#00F0FF")   // cyan
+    static let neon2 = Color(hex: "#FF2D95")  // hot pink
+    static let text = Color(hex: "#7DF9FF")   // light cyan label
+    static let tile = Color(hex: "#0B0A1F")   // dark glass base
+}
+
 extension Color {
     /// Create a Color from a "#RRGGBB" string.
     init(hex: String) {
