@@ -386,6 +386,9 @@ struct WidgetTileView: View {
         .shadow(color: transparent ? .clear : (cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3)),
                 radius: transparent ? 0 : (cyber ? 8 : 4))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
+        .overlay(alignment: .bottom) {
+            if widget.kind == .video && hovering { volumeBar }
+        }
         .onHover { hovering = $0 }
         .contextMenu {
             if widget.kind == .image || widget.kind == .video {
@@ -394,11 +397,6 @@ struct WidgetTileView: View {
             if widget.kind == .video {
                 Button(widget.muted ? store.t(.videoSound) : store.t(.mute)) {
                     store.toggleWidgetMuted(widget.id)
-                }
-                Menu(store.t(.volume)) {
-                    ForEach([25, 50, 75, 100], id: \.self) { p in
-                        Button("\(p)%") { store.setWidgetVolume(widget.id, Double(p) / 100) }
-                    }
                 }
             }
             Button(store.t(.widgetTransparent)) { store.toggleWidgetTransparent(widget.id) }
@@ -460,5 +458,29 @@ struct WidgetTileView: View {
                         resizeDelta = .zero
                     }
             )
+    }
+
+    /// Inline volume fader for video widgets (shown on hover). Mute button + slider.
+    private var volumeBar: some View {
+        HStack(spacing: 6) {
+            Button { store.toggleWidgetMuted(widget.id) } label: {
+                Image(systemName: widget.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white)
+            }
+            .buttonStyle(.plain)
+
+            Slider(value: Binding(get: { widget.volume },
+                                  set: { store.setWidgetVolume(widget.id, $0) }),
+                   in: 0...1)
+                .controlSize(.mini)
+                .tint(.white)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.bottom, 6)
+        .padding(.horizontal, 8)
+        .padding(.trailing, 14)   // keep clear of the resize handle
     }
 }

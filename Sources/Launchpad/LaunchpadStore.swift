@@ -1373,11 +1373,10 @@ final class LaunchpadStore: ObservableObject {
         save()
     }
 
-    /// Set a video widget's audio volume (0…1) and unmute it.
+    /// Set a video widget's audio volume (0…1). Mute is controlled separately.
     func setWidgetVolume(_ id: String, _ vol: Double) {
         guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
         widgets[i].volume = min(max(vol, 0), 1)
-        widgets[i].muted = false
         save()
     }
 
