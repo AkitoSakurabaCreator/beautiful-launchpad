@@ -1329,6 +1329,43 @@ final class LaunchpadStore: ObservableObject {
         save()
     }
 
+    /// Add an image/video widget, prompting for the file first.
+    func addMediaWidget(_ kind: WidgetKind, page: Int) {
+        guard kind == .image || kind == .video else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = (kind == .image) ? [.image] : [.movie, .mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var w = WidgetItem(id: "widget-" + UUID().uuidString, kind: kind, page: page)
+        w.text = url.path
+        w.w = 0.28; w.h = 0.22
+        let n = Double(widgetsOnPage(page).count % 5)
+        w.x = min(0.85, 0.3 + n * 0.06)
+        w.y = min(0.85, 0.35 + n * 0.05)
+        widgets.append(w.normalized())
+        save()
+    }
+
+    /// Re-pick the file for an existing image/video widget.
+    func chooseWidgetMedia(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        let kind = widgets[i].kind
+        guard kind == .image || kind == .video else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = (kind == .image) ? [.image] : [.movie, .mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        widgets[i].text = url.path
+        save()
+    }
+
+    /// Toggle a widget's transparent (no card background) mode.
+    func toggleWidgetTransparent(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].transparent.toggle()
+        save()
+    }
+
     func updateWidgetText(_ id: String, _ text: String) {
         guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
         widgets[i].text = text

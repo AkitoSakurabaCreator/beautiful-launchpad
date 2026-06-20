@@ -62,8 +62,46 @@ struct WidgetContentView: View {
         case .battery: BatteryWidgetView(accent: accent)
         case .system:  SystemWidgetView(accent: accent)
         case .weather: WeatherWidgetView(widget: widget, accent: accent)
+        case .image:   ImageWidgetView(path: widget.text)
+        case .video:   VideoWidgetView(path: widget.text)
         }
     }
+}
+
+private struct ImageWidgetView: View {
+    let path: String
+    var body: some View {
+        if !path.isEmpty, let img = NSImage(contentsOfFile: (path as NSString).expandingTildeInPath) {
+            // .fit preserves transparency / shows the whole image (good for PNG logos).
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            placeholder(symbol: "photo")
+        }
+    }
+}
+
+private struct VideoWidgetView: View {
+    let path: String
+    var body: some View {
+        if !path.isEmpty, FileManager.default.fileExists(atPath: (path as NSString).expandingTildeInPath) {
+            VideoBackgroundView(paths: [(path as NSString).expandingTildeInPath], muted: true)
+                .id(path)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else {
+            placeholder(symbol: "film")
+        }
+    }
+}
+
+private func placeholder(symbol: String) -> some View {
+    Image(systemName: symbol)
+        .font(.system(size: 22))
+        .foregroundColor(.white.opacity(0.5))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
 }
 
 private struct ClockWidgetView: View {
@@ -313,26 +351,47 @@ struct WidgetTileView: View {
         let cx = widget.x * areaSize.width + dragOffset.width
         let cy = widget.y * areaSize.height + dragOffset.height
 
+        let transparent = widget.transparent
+
         VStack(spacing: 0) {
             titleBar
+                // In transparent mode the title bar is hidden until you hover (so the
+                // media shows cleanly); it stays grabbable regardless.
+                .opacity(transparent && !hovering ? 0 : 1)
             WidgetContentView(widget: widget)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
         }
         .frame(width: w, height: h)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill((cyber ? CyberPalette.tile : Color.black).opacity(cyber ? 0.6 : 0.4))
+            Group {
+                if !transparent {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill((cyber ? CyberPalette.tile : Color.black).opacity(cyber ? 0.6 : 0.4))
+                }
+            }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke((cyber ? CyberPalette.neon : Color.white).opacity(cyber ? 0.85 : 0.18),
-                        lineWidth: cyber ? 1.5 : 1)
+            Group {
+                if !transparent {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke((cyber ? CyberPalette.neon : Color.white).opacity(cyber ? 0.85 : 0.18),
+                                lineWidth: cyber ? 1.5 : 1)
+                }
+            }
         )
-        .shadow(color: cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3),
-                radius: cyber ? 8 : 4)
+        .shadow(color: transparent ? .clear : (cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3)),
+                radius: transparent ? 0 : (cyber ? 8 : 4))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
         .onHover { hovering = $0 }
+        .contextMenu {
+            if widget.kind == .image || widget.kind == .video {
+                Button(store.t(.chooseFile)) { store.chooseWidgetMedia(widget.id) }
+            }
+            Button(store.t(.widgetTransparent)) { store.toggleWidgetTransparent(widget.id) }
+            Divider()
+            Button(store.t(.deleteItem), role: .destructive) { store.removeWidget(widget.id) }
+        }
         // `.position` MUST be last: any interaction modifier applied *after* it (e.g.
         // .onHover) attaches to the parent-filling container and would swallow clicks
         // across the whole page, blocking the icons beneath. Keeping interactions on
@@ -374,7 +433,7 @@ struct WidgetTileView: View {
     private var resizeHandle: some View {
         Image(systemName: "arrow.down.right")
             .font(.system(size: 9, weight: .bold))
-            .foregroundColor(.white.opacity(hovering ? 0.85 : 0.4))
+            .foregroundColor(.white.opacity(hovering ? 0.85 : (widget.transparent ? 0 : 0.4)))
             .frame(width: 18, height: 18)
             .contentShape(Rectangle())
             .gesture(

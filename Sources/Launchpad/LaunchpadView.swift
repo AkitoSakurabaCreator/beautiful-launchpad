@@ -173,6 +173,9 @@ struct PageGrid: View {
             Button(store.t(.widgetBattery)) { store.addWidget(.battery, page: pageIndex) }
             Button(store.t(.widgetSystem)) { store.addWidget(.system, page: pageIndex) }
             Button(store.t(.widgetWeather)) { store.addWidget(.weather, page: pageIndex) }
+            Divider()
+            Button(store.t(.widgetImage)) { store.addMediaWidget(.image, page: pageIndex) }
+            Button(store.t(.widgetVideo)) { store.addMediaWidget(.video, page: pageIndex) }
         }
         Divider()
         Menu(store.t(.pageBackground)) {

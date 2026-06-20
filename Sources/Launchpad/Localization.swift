@@ -40,6 +40,7 @@ enum L {
         case onboardingTitle, onboardingBody, openPrivacy, continueButton
         case chooseSound, clearSound, customSound, videoSound, newPage, volume
         case addWidget, widgetClock, widgetDate, widgetNotes, widgetBattery, widgetSystem, widgetWeather
+        case widgetImage, widgetVideo, widgetTransparent
     }
 
     /// Resolve the concrete language from the user's choice and the OS locale.
@@ -175,5 +176,8 @@ enum L {
         .widgetBattery:       ("バッテリー", "Battery"),
         .widgetSystem:        ("システム", "System"),
         .widgetWeather:       ("天気", "Weather"),
+        .widgetImage:         ("画像", "Image"),
+        .widgetVideo:         ("動画", "Video"),
+        .widgetTransparent:   ("背景を透過", "Transparent background"),
     ]
 }

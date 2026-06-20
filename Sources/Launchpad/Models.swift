@@ -41,6 +41,8 @@ enum WidgetKind: String, Codable, CaseIterable {
     case battery   // battery percentage / charging
     case system    // memory usage + uptime
     case weather   // current conditions (network)
+    case image     // user-picked still image (`text` = file path)
+    case video     // user-picked looping video (`text` = file path)
 }
 
 /// A user-placed widget. Position/size are normalized (0…1) within the page area so
@@ -53,7 +55,9 @@ struct WidgetItem: Identifiable, Codable, Hashable {
     var y: Double = 0.5
     var w: Double = 0.22      // normalized size
     var h: Double = 0.16
-    var text: String = ""     // notes content / per-widget config
+    var text: String = ""     // notes content · image/video file path · per-widget config
+    /// Hide the card background/border (for transparent images, alpha videos, overlays).
+    var transparent: Bool = false
 
     /// Clamp every field into a safe range (defends against hand-edited files).
     func normalized() -> WidgetItem {
@@ -64,6 +68,25 @@ struct WidgetItem: Identifiable, Codable, Hashable {
         v.w = min(max(v.w, 0.08), 0.9)
         v.h = min(max(v.h, 0.06), 0.9)
         return v
+    }
+
+    enum CodingKeys: String, CodingKey { case id, kind, page, x, y, w, h, text, transparent }
+}
+
+extension WidgetItem {
+    // Decode-tolerant: tolerate files that predate `transparent` / other fields so a
+    // single older widget can't wipe the whole array.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = (try? c.decode(WidgetKind.self, forKey: .kind)) ?? .clock
+        page = (try? c.decode(Int.self, forKey: .page)) ?? 0
+        x = (try? c.decode(Double.self, forKey: .x)) ?? 0.5
+        y = (try? c.decode(Double.self, forKey: .y)) ?? 0.5
+        w = (try? c.decode(Double.self, forKey: .w)) ?? 0.22
+        h = (try? c.decode(Double.self, forKey: .h)) ?? 0.16
+        text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        transparent = (try? c.decode(Bool.self, forKey: .transparent)) ?? false
     }
 }
 
