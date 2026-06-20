@@ -172,6 +172,7 @@ struct PageGrid: View {
             Button(store.t(.widgetNotes)) { store.addWidget(.notes, page: pageIndex) }
             Button(store.t(.widgetBattery)) { store.addWidget(.battery, page: pageIndex) }
             Button(store.t(.widgetSystem)) { store.addWidget(.system, page: pageIndex) }
+            Button(store.t(.widgetWeather)) { store.addWidget(.weather, page: pageIndex) }
         }
         Divider()
         Menu(store.t(.pageBackground)) {

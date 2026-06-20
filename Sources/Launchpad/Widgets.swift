@@ -179,18 +179,102 @@ private struct SystemWidgetView: View {
     }
 }
 
-/// Placeholder until Phase 4 wires live weather (Open-Meteo).
+/// Live current weather via Open-Meteo (no API key), auto-located by IP (no Location
+/// permission). Refreshes every 15 minutes; shows "—" offline.
 private struct WeatherWidgetView: View {
     let widget: WidgetItem
     let accent: Color
+    @State private var temp: Double? = nil
+    @State private var code: Int = 0
+    @State private var place: String = ""
+    @State private var failed = false
+    @State private var loaded = false
+
     var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: "cloud.sun").font(.system(size: 22))
-            Text("—°").font(.system(size: 22, weight: .semibold, design: .rounded))
-            Text("Weather").font(.system(size: 11)).opacity(0.7)
+        VStack(spacing: 3) {
+            Image(systemName: weatherSymbol(code)).font(.system(size: 22))
+            if let temp {
+                Text("\(Int(temp.rounded()))°")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                Text(place.isEmpty ? weatherCondition(code) : place)
+                    .font(.system(size: 11)).opacity(0.75).lineLimit(1).minimumScaleFactor(0.6)
+            } else if failed {
+                Text("—°").font(.system(size: 22, weight: .semibold, design: .rounded))
+                Text("offline").font(.system(size: 10)).opacity(0.6)
+            } else {
+                ProgressView().controlSize(.small)
+            }
         }
         .foregroundColor(accent)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task { if !loaded { await load() } }
+        .onReceive(Timer.publish(every: 900, on: .main, in: .common).autoconnect()) { _ in
+            Task { await load() }
+        }
+    }
+
+    private func load() async {
+        do {
+            let loc = try await ipGeolocate()
+            let wx = try await fetchWeather(lat: loc.lat, lon: loc.lon)
+            await MainActor.run {
+                temp = wx.temp; code = wx.code; place = loc.city; failed = false; loaded = true
+            }
+        } catch {
+            await MainActor.run { failed = true; loaded = true }
+        }
+    }
+}
+
+private func ipGeolocate() async throws -> (lat: Double, lon: Double, city: String) {
+    let url = URL(string: "https://ipapi.co/json/")!
+    let (data, _) = try await URLSession.shared.data(from: url)
+    let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let lat = j?["latitude"] as? Double
+    let lon = j?["longitude"] as? Double
+    guard let lat, let lon else { throw URLError(.cannotParseResponse) }
+    return (lat, lon, (j?["city"] as? String) ?? "")
+}
+
+private func fetchWeather(lat: Double, lon: Double) async throws -> (temp: Double, code: Int) {
+    let str = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,weather_code"
+    guard let url = URL(string: str) else { throw URLError(.badURL) }
+    let (data, _) = try await URLSession.shared.data(from: url)
+    let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let cur = j?["current"] as? [String: Any]
+    guard let temp = cur?["temperature_2m"] as? Double else { throw URLError(.cannotParseResponse) }
+    let code = (cur?["weather_code"] as? Int) ?? 0
+    return (temp, code)
+}
+
+/// WMO weather code → SF Symbol.
+private func weatherSymbol(_ code: Int) -> String {
+    switch code {
+    case 0:        return "sun.max"
+    case 1, 2:     return "cloud.sun"
+    case 3:        return "cloud"
+    case 45, 48:   return "cloud.fog"
+    case 51...67:  return "cloud.drizzle"
+    case 71...77:  return "cloud.snow"
+    case 80...82:  return "cloud.heavyrain"
+    case 85, 86:   return "cloud.snow"
+    case 95...99:  return "cloud.bolt.rain"
+    default:       return "cloud.sun"
+    }
+}
+
+/// WMO weather code → short label.
+private func weatherCondition(_ code: Int) -> String {
+    switch code {
+    case 0:        return "Clear"
+    case 1, 2:     return "Partly cloudy"
+    case 3:        return "Cloudy"
+    case 45, 48:   return "Fog"
+    case 51...67:  return "Rain"
+    case 71...77, 85, 86: return "Snow"
+    case 80...82:  return "Showers"
+    case 95...99:  return "Storm"
+    default:       return "—"
     }
 }
 
