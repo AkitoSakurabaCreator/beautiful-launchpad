@@ -147,6 +147,11 @@ struct PageGrid: View {
                     .position(store.tilePosition(for: id, index: idx, geo: geo, area: areaSize))
                     .opacity(store.draggingID == id ? 0.28 : 1)
             }
+
+            // User-placed widgets float above the icon grid on this page (not in search).
+            if !store.isSearching {
+                WidgetLayer(pageIndex: pageIndex, areaSize: areaSize)
+            }
         }
         .frame(width: areaSize.width, height: areaSize.height)
         .animation(store.settings.anim(0.2), value: items)
@@ -161,6 +166,17 @@ struct PageGrid: View {
     @ViewBuilder
     private var pageMenu: some View {
         Button(store.t(.addItem)) { store.beginAddItem() }
+        Menu(store.t(.addWidget)) {
+            Button(store.t(.widgetClock)) { store.addWidget(.clock, page: pageIndex) }
+            Button(store.t(.widgetDate)) { store.addWidget(.date, page: pageIndex) }
+            Button(store.t(.widgetNotes)) { store.addWidget(.notes, page: pageIndex) }
+            Button(store.t(.widgetBattery)) { store.addWidget(.battery, page: pageIndex) }
+            Button(store.t(.widgetSystem)) { store.addWidget(.system, page: pageIndex) }
+            Button(store.t(.widgetWeather)) { store.addWidget(.weather, page: pageIndex) }
+            Divider()
+            Button(store.t(.widgetImage)) { store.addMediaWidget(.image, page: pageIndex) }
+            Button(store.t(.widgetVideo)) { store.addMediaWidget(.video, page: pageIndex) }
+        }
         Divider()
         Menu(store.t(.pageBackground)) {
             Button(store.t(.pageBgImage)) { store.setPageBackgroundImage(pageIndex) }

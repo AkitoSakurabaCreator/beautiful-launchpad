@@ -15,23 +15,25 @@ struct AppIconView: View {
         case .classic: return iconSize * 0.24
         case .android: return iconSize * 0.5     // circle
         case .windows: return iconSize * 0.12    // rounded square tile
+        case .cyber:   return iconSize * 0.16    // neon tile
         }
     }
+    private var labelColor: Color { style == .cyber ? CyberPalette.text : .white }
 
     var body: some View {
         VStack(spacing: style == .android ? 8 : 7) {
             ZStack {
                 if highlight {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke(Color.white.opacity(0.9), lineWidth: 3)
+                        .stroke((style == .cyber ? CyberPalette.neon : Color.white).opacity(0.9), lineWidth: 3)
                         .frame(width: iconSize + 14, height: iconSize + 14)
                 }
                 iconImage
             }
             if showLabel {
                 Text(app.name)
-                    .font(.system(size: 12.5, weight: style == .android ? .medium : .regular))
-                    .foregroundColor(.white)
+                    .font(.system(size: 12.5, weight: (style == .android || style == .cyber) ? .medium : .regular))
+                    .foregroundColor(labelColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)
@@ -79,6 +81,23 @@ struct AppIconView: View {
                     .stroke(Color.white.opacity(0.2), lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 3)
+        case .cyber:
+            // Neon tile: dark glass square, cyan border + glow, icon inset.
+            ZStack {
+                RoundedRectangle(cornerRadius: iconSize * 0.16, style: .continuous)
+                    .fill(CyberPalette.tile.opacity(0.6))
+                Image(nsImage: app.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: iconSize * 0.66, height: iconSize * 0.66)
+            }
+            .frame(width: iconSize, height: iconSize)
+            .overlay(
+                RoundedRectangle(cornerRadius: iconSize * 0.16, style: .continuous)
+                    .stroke(CyberPalette.neon.opacity(0.9), lineWidth: 1.5)
+            )
+            .shadow(color: CyberPalette.neon.opacity(0.55), radius: 8)
         }
     }
 }
@@ -98,6 +117,7 @@ struct FolderIconView: View {
         case .classic: return mainCell * 0.24
         case .android: return mainCell * 0.5
         case .windows: return mainCell * 0.10
+        case .cyber:   return mainCell * 0.12
         }
     }
 
@@ -110,15 +130,24 @@ struct FolderIconView: View {
         let mainCell = iconSize * 0.92
         let rad = corner(mainCell)
 
+        // Cyber style: dark glass fill + neon accent border + glow (the folder's own
+        // colour, if set, becomes the neon accent; else default cyan).
+        let isCyber = store.settings.layoutStyle == .cyber
+        let accent = folder.colorHex.map { Color(hex: $0) } ?? CyberPalette.neon
+        let fillColor = isCyber ? CyberPalette.tile.opacity(0.6)
+            : (folder.colorHex.map { Color(hex: $0).opacity(0.55) } ?? Color.white.opacity(0.16))
+        let strokeColor = isCyber ? accent.opacity(0.9) : Color.white.opacity(highlight ? 0.9 : 0.18)
+        let strokeW: CGFloat = isCyber ? 1.5 : (highlight ? 3 : 1)
+
         VStack(spacing: 7) {
             ZStack {
                 RoundedRectangle(cornerRadius: rad, style: .continuous)
-                    .fill(folder.colorHex.map { Color(hex: $0).opacity(0.55) } ?? Color.white.opacity(0.16))
+                    .fill(fillColor)
                     .overlay(
                         RoundedRectangle(cornerRadius: rad, style: .continuous)
-                            .stroke(Color.white.opacity(highlight ? 0.9 : 0.18),
-                                    lineWidth: highlight ? 3 : 1)
+                            .stroke(strokeColor, lineWidth: strokeW)
                     )
+                    .shadow(color: isCyber ? accent.opacity(0.5) : .clear, radius: isCyber ? 8 : 0)
                     .frame(width: mainCell, height: mainCell)
 
                 VStack(spacing: gap) {
@@ -154,7 +183,7 @@ struct FolderIconView: View {
             if showLabel {
                 Text(folder.name)
                     .font(.system(size: 12.5))
-                    .foregroundColor(.white)
+                    .foregroundColor(isCyber ? CyberPalette.text : .white)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)

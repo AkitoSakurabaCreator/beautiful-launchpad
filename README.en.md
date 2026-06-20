@@ -34,9 +34,10 @@ on click.
 - 🎨 **Appearance customization** — background (desktop blur / theme / image / **slideshow** / **video** / solid color), blur strength, columns & rows, folder columns & rows, dimming, icon-label toggle
 - 🖼 **Slideshow background** — cross-fade through the images in a folder, sequentially or shuffled (interval 3–300s)
 - 🎬 **Video background** — loop a single video seamlessly, or play a folder of videos as a playlist (sequential or shuffled); mute toggle and volume control included
-- 🧱 **Layout style** — switch the look between Classic / Android / Windows
+- 🧱 **Layout style** — switch the icon & folder look between Classic / Android / Windows / **Cyber** (neon glow)
 - 📌 **Free icon placement** — place icons anywhere instead of on the grid (use "Re-align" to snap back anytime)
 - 🌄 **Per-page background** — right-click a page's empty space to give that page its own image or preset color
+- 📟 **Widgets** — place **clock / date / notes / battery / system info / weather / image / video** widgets on a page; drag to move, drag the corner to resize, and use "Hide window" to drop the card chrome and blend into the background (weather uses Open-Meteo — no API key, auto-located by IP)
 - 🔊 **App launch sound** — play one of 8 system sounds (Pop / Tink / Glass / Hero / Submarine / Ping / Funk / Morse) or a custom sound file when launching
 - 👋 **First-run onboarding** — a welcome screen on first launch that guides you to Privacy settings so images from protected folders (Desktop/Documents) can be used as backgrounds
 - 🧩 **User-defined items** — manually add **apps / scripts & shell commands / URLs / random image (folder)** (with an optional custom icon). Add them by right-clicking the background or an icon → "Add Item"
@@ -117,7 +118,10 @@ swift build        # compile only
 | Drag an item **to the left/right edge** inside a folder | Flip the folder page |
 | Drag an item **outside the card (dark backdrop)** from inside a folder | Move it out, up one level (the "−" button also works) |
 | Tap a sub-folder / **‹ back** | Drill into it / go up one level |
-| **Right-click** an icon / folder / the background | Context menu (add/edit/delete an item, reveal in Finder, **hide an item**, set **this page's background**, etc.) |
+| **Right-click** an icon / folder / the background | Context menu (add an item, **add a widget**, edit/delete, reveal in Finder, **hide an item**, set **this page's background**, etc.) |
+| Drag a widget's **title bar or body** / its bottom-right corner handle | Move / resize the widget (Notes is moved by its title bar — its body is for editing) |
+| **Right-click** a widget | Choose media (image/video), toggle mute (video), **show/hide window**, **lock/unlock**, delete |
+| Hover over a widget | Shows sliders at the bottom: **rotation** (all), **opacity** (image/video), **volume/mute** (video) |
 | ⚙️ button (top-right) / **⌘,** | Open the customization screen |
 | Esc | Close settings/folder → clear search → quit |
 | Click empty space | Quit |
@@ -131,13 +135,13 @@ To reset the layout, use "Reset" on the customization screen, or delete
 
 Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
 
-- **Background**: desktop blur (classic) / theme (6 gradients) / image (any wallpaper) / slideshow (an image folder) / video (a single file or a folder playlist) / solid color
+- **Background**: desktop blur (classic) / theme (8 presets: Midnight, Aurora, Sunset, Forest, Graphite, Rose, Cyber, Glass) / image (any wallpaper) / slideshow (an image folder) / video (a single file or a folder playlist) / solid color
   - **Desktop blur**: adjust 0–100% with the "Blur strength" slider
   - **Slideshow**: pick a folder, then set shuffle on/off and the interval (3–300s); images cross-fade
   - **Video**: pick a single video or a folder (shuffle available for a folder). Turn on "Play video audio" to hear sound and adjust the volume
 - **Dimming**: opacity of the dark overlay on top of the background
 - **Layout**: columns (4–10) and rows (3–8), plus folder columns (3–8) and rows (2–6)
-- **Layout style**: Classic / Android / Windows
+- **Layout style**: Classic / Android / Windows / Cyber (neon glow)
 - **Icon labels**: toggle labels ON/OFF
 - **Animation**: enable/disable, open/close effect (zoom / fade / slide / none), and speed (0.5–2.0×)
 - **Free icon placement**: turn on to place icons anywhere; turn off to auto-align like before ("Re-align" snaps everything back)
@@ -153,6 +157,16 @@ Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
 ### Per-page background
 
 - **Right-click a page's empty space → "This page's background"** to give that single page its own image or preset color. Use "Clear background" to revert to the shared background.
+
+### Widgets
+
+- **Add**: **right-click a page's empty space → "Add Widget"** to place a clock, date, notes, battery, system, weather, image, or video widget.
+- **Move / resize**: drag the title bar (the handle at the top) or the **widget body** to move; drag the bottom-right corner handle to resize (Notes is moved via its title bar, since its body is for editing). Position and size are stored normalized, so they survive window/display size changes.
+- **Hover controls (sliders)**: hover over a widget to reveal sliders at the bottom for **rotation** (all widgets, −180…180°), **opacity** (image/video), and **volume & mute** (video).
+- **Right-click a widget**: re-pick the media for image/video widgets, toggle mute for video, **"Hide/Show window"** to drop the card background/border (so transparent PNGs and overlay videos blend in), or **"Lock/Unlock"** to prevent accidental changes (a locked widget can't be moved, resized, or hovered). Delete is here too.
+- **Weather**: uses Open-Meteo (no API key) and auto-locates by IP (no Location permission), refreshing every 15 minutes. Shows "—" when offline.
+- **Notes**: editable in place; the text is saved in `layout.json`.
+- Widgets are hidden while searching, and their layout is persisted in `layout.json`.
 
 ### Hiding / restoring items
 
@@ -187,9 +201,9 @@ LaunchPad/
 └── Sources/Launchpad/
     ├── LaunchpadApp.swift        # @main / AppDelegate / full-screen window / key & scroll monitoring
     ├── Support.swift             # GridGeometry / VisualEffectView / chunk
-    ├── Models.swift              # AppInfo / Folder / CustomItem / enums / persistence & settings models (order, folders, hidden, free placement, per-page backgrounds, all AppSettings)
+    ├── Models.swift              # AppInfo / Folder / CustomItem / WidgetItem / enums / persistence & settings models (order, folders, hidden, free placement, per-page backgrounds, widgets, all AppSettings)
     ├── AppScanner.swift          # installed-app scanning + icon retrieval
-    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / free placement / per-page backgrounds / launch sound / persistence
+    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / free placement / per-page backgrounds / widgets / launch sound / persistence
     ├── LaunchpadView.swift       # root / pager / grid / search / dots / right-click menu
     ├── IconViews.swift           # app/folder tile rendering (folder mini-preview)
     ├── FolderViews.swift         # folder overlay (nesting, pagination, color)
@@ -198,8 +212,9 @@ LaunchPad/
     ├── Animations.swift          # animation policy (speed multiplier, open/close transitions, enable/disable — centralized)
     ├── BackgroundMedia.swift     # video background (single loop / folder playlist) and image slideshow background
     ├── Onboarding.swift          # first-run welcome / permissions dialog
+    ├── Widgets.swift             # widgets (clock/date/notes/battery/system/weather/image/video) rendering, placement, resizing
     ├── SettingsView.swift        # customization screen (background, layout, layout style, animation, sound, language, update, hidden items, export/import)
-    ├── Theming.swift             # background rendering (desktop blur / theme / image / solid + blur strength)
+    ├── Theming.swift             # background rendering (blur / 8 themes / image / solid + blur strength) + Cyber color palette
     ├── Localization.swift        # in-code i18n table (Japanese / English / follow-system, live switch)
     └── Updater.swift             # Sparkle auto-update (dismiss guard for the full-screen overlay)
 ```

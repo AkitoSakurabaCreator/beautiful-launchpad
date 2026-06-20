@@ -24,6 +24,8 @@ final class LaunchpadStore: ObservableObject {
     @Published var freePositions: [String: CGPoint] = [:]
     /// Free-placement page assignment per id (used only in free mode).
     @Published var freePages: [String: Int] = [:]
+    /// User-placed widgets (free-positioned & resizable).
+    @Published var widgets: [WidgetItem] = []
     /// Last pointer location seen during a drag (page container space) — used to drop
     /// an item at an exact spot in free-placement mode.
     private var lastDragPoint: CGPoint = .zero
@@ -110,6 +112,7 @@ final class LaunchpadStore: ObservableObject {
         hidden = Set(persisted?.hidden ?? [])
         freePositions = persisted?.freePositions ?? [:]
         freePages = persisted?.freePages ?? [:]
+        widgets = (persisted?.widgets ?? []).map { $0.normalized() }
         reconcile(scanned: catalogueSorted(), persisted: persisted)
         sanitizeFreePlacement()
         clampPage()
@@ -287,7 +290,8 @@ final class LaunchpadStore: ObservableObject {
             customItems: Array(customById.values),
             hidden: Array(hidden),
             freePositions: freePositions,
-            freePages: freePages
+            freePages: freePages,
+            widgets: widgets
         )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
@@ -344,7 +348,8 @@ final class LaunchpadStore: ObservableObject {
                 customItems: Array(customById.values),
                 hidden: Array(hidden),
                 freePositions: freePositions,
-                freePages: freePages
+                freePages: freePages,
+                widgets: widgets
             ),
             settings: settings
         )
@@ -373,6 +378,7 @@ final class LaunchpadStore: ObservableObject {
         hidden = Set(bundle.layout.hidden)
         freePositions = bundle.layout.freePositions
         freePages = bundle.layout.freePages
+        widgets = bundle.layout.widgets.map { $0.normalized() }
         applyImportedLayout(bundle.layout)
         sanitizeFreePlacement()
         save()
@@ -1294,6 +1300,130 @@ final class LaunchpadStore: ObservableObject {
         freePages = freePages
             .filter { valid.contains($0.key) }
             .mapValues { min(max($0, 0), Self.maxFreePage) }
+    }
+
+    // MARK: - Widgets (free-positioned & resizable)
+
+    func widgetsOnPage(_ page: Int) -> [WidgetItem] { widgets.filter { $0.page == page } }
+    func widget(_ id: String) -> WidgetItem? { widgets.first { $0.id == id } }
+
+    /// Add a widget to the centre-ish of the given page.
+    func addWidget(_ kind: WidgetKind, page: Int) {
+        var w = WidgetItem(id: "widget-" + UUID().uuidString, kind: kind, page: page)
+        // Default size by kind (normalized).
+        switch kind {
+        case .notes:   w.w = 0.26; w.h = 0.22
+        case .weather: w.w = 0.24; w.h = 0.18
+        default:       w.w = 0.20; w.h = 0.15
+        }
+        // Slight cascade so multiple new widgets don't stack exactly.
+        let n = Double(widgetsOnPage(page).count % 5)
+        w.x = min(0.85, 0.3 + n * 0.06)
+        w.y = min(0.85, 0.35 + n * 0.05)
+        widgets.append(w.normalized())
+        save()
+    }
+
+    func removeWidget(_ id: String) {
+        widgets.removeAll { $0.id == id }
+        save()
+    }
+
+    /// Add an image/video widget, prompting for the file first.
+    func addMediaWidget(_ kind: WidgetKind, page: Int) {
+        guard kind == .image || kind == .video else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = (kind == .image) ? [.image] : [.movie, .mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var w = WidgetItem(id: "widget-" + UUID().uuidString, kind: kind, page: page)
+        w.text = url.path
+        w.w = 0.28; w.h = 0.22
+        let n = Double(widgetsOnPage(page).count % 5)
+        w.x = min(0.85, 0.3 + n * 0.06)
+        w.y = min(0.85, 0.35 + n * 0.05)
+        widgets.append(w.normalized())
+        save()
+    }
+
+    /// Re-pick the file for an existing image/video widget.
+    func chooseWidgetMedia(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        let kind = widgets[i].kind
+        guard kind == .image || kind == .video else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = (kind == .image) ? [.image] : [.movie, .mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        widgets[i].text = url.path
+        save()
+    }
+
+    /// Toggle a widget's transparent (no card background) mode.
+    func toggleWidgetTransparent(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].transparent.toggle()
+        save()
+    }
+
+    /// Toggle a video widget's mute.
+    func toggleWidgetMuted(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].muted.toggle()
+        save()
+    }
+
+    /// Set a video widget's audio volume (0…1). Mute is controlled separately.
+    func setWidgetVolume(_ id: String, _ vol: Double) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].volume = min(max(vol, 0), 1)
+        save()
+    }
+
+    /// Set a widget's content opacity (0.05…1) — how transparent the image/video is.
+    func setWidgetOpacity(_ id: String, _ value: Double) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].opacity = min(max(value, 0.05), 1)
+        save()
+    }
+
+    /// Set a widget's rotation (degrees, −180…180).
+    func setWidgetRotation(_ id: String, _ degrees: Double) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].rotation = min(max(degrees, -180), 180)
+        save()
+    }
+
+    /// Lock/unlock a widget (locked = no hover UI, no drag/resize).
+    func toggleWidgetLocked(_ id: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].locked.toggle()
+        save()
+    }
+
+    func updateWidgetText(_ id: String, _ text: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].text = text
+        save()
+    }
+
+    /// Move a widget to a normalized centre derived from a drop point in page space.
+    func moveWidget(_ id: String, center: CGPoint, container: CGSize) {
+        guard container.width > 0, container.height > 0,
+              let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].x = min(max(center.x / container.width, 0), 1)
+        widgets[i].y = min(max(center.y / container.height, 0), 1)
+        widgets[i] = widgets[i].normalized()
+        save()
+    }
+
+    /// Resize a widget to a normalized size derived from a pixel size in page space.
+    func resizeWidget(_ id: String, size: CGSize, container: CGSize) {
+        guard container.width > 0, container.height > 0,
+              let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].w = min(max(size.width / container.width, 0.08), 0.9)
+        widgets[i].h = min(max(size.height / container.height, 0.06), 0.9)
+        save()
     }
 
     private func flip(next: Bool) {
