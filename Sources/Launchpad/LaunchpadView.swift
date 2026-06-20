@@ -164,8 +164,8 @@ struct PageGrid: View {
         Divider()
         Menu(store.t(.pageBackground)) {
             Button(store.t(.pageBgImage)) { store.setPageBackgroundImage(pageIndex) }
-            ForEach(PageGrid.pageColorPalette, id: \.self) { hex in
-                Button { store.setPageBackgroundColor(pageIndex, hex: hex) } label: { Text(hex) }
+            ForEach(PageGrid.pageColorPalette, id: \.hex) { c in
+                Button { store.setPageBackgroundColor(pageIndex, hex: c.hex) } label: { Text(c.name) }
             }
             if store.pageHasBackground(pageIndex) {
                 Divider()
@@ -174,7 +174,10 @@ struct PageGrid: View {
         }
     }
 
-    static let pageColorPalette = ["#0B1026", "#1A1340", "#064E3B", "#7C3AED", "#0A84FF", "#9D174D", "#2B2B2E"]
+    static let pageColorPalette: [(name: String, hex: String)] = [
+        ("Midnight", "#0B1026"), ("Indigo", "#1A1340"), ("Forest", "#064E3B"),
+        ("Purple", "#7C3AED"), ("Blue", "#0A84FF"), ("Rose", "#9D174D"), ("Graphite", "#2B2B2E"),
+    ]
 
     @ViewBuilder
     private func tileView(for id: String) -> some View {
