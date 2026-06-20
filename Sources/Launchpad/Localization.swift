@@ -39,6 +39,7 @@ enum L {
         case freePlacement, freePlacementNote, realign, kindRandomImage, randomImageHint
         case onboardingTitle, onboardingBody, openPrivacy, continueButton
         case chooseSound, clearSound, customSound, videoSound, newPage, volume
+        case addWidget, widgetClock, widgetDate, widgetNotes, widgetBattery, widgetSystem
     }
 
     /// Resolve the concrete language from the user's choice and the OS locale.
@@ -167,5 +168,11 @@ enum L {
         .videoSound:          ("動画の音を出す", "Play video audio"),
         .newPage:             ("新しいページ", "New page"),
         .volume:              ("音量", "Volume"),
+        .addWidget:           ("ウィジェットを追加", "Add Widget"),
+        .widgetClock:         ("時計", "Clock"),
+        .widgetDate:          ("日付", "Date"),
+        .widgetNotes:         ("メモ", "Notes"),
+        .widgetBattery:       ("バッテリー", "Battery"),
+        .widgetSystem:        ("システム", "System"),
     ]
 }

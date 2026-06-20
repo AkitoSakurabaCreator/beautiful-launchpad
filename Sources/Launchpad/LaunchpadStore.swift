@@ -24,6 +24,8 @@ final class LaunchpadStore: ObservableObject {
     @Published var freePositions: [String: CGPoint] = [:]
     /// Free-placement page assignment per id (used only in free mode).
     @Published var freePages: [String: Int] = [:]
+    /// User-placed widgets (free-positioned & resizable).
+    @Published var widgets: [WidgetItem] = []
     /// Last pointer location seen during a drag (page container space) — used to drop
     /// an item at an exact spot in free-placement mode.
     private var lastDragPoint: CGPoint = .zero
@@ -110,6 +112,7 @@ final class LaunchpadStore: ObservableObject {
         hidden = Set(persisted?.hidden ?? [])
         freePositions = persisted?.freePositions ?? [:]
         freePages = persisted?.freePages ?? [:]
+        widgets = (persisted?.widgets ?? []).map { $0.normalized() }
         reconcile(scanned: catalogueSorted(), persisted: persisted)
         sanitizeFreePlacement()
         clampPage()
@@ -287,7 +290,8 @@ final class LaunchpadStore: ObservableObject {
             customItems: Array(customById.values),
             hidden: Array(hidden),
             freePositions: freePositions,
-            freePages: freePages
+            freePages: freePages,
+            widgets: widgets
         )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
@@ -344,7 +348,8 @@ final class LaunchpadStore: ObservableObject {
                 customItems: Array(customById.values),
                 hidden: Array(hidden),
                 freePositions: freePositions,
-                freePages: freePages
+                freePages: freePages,
+                widgets: widgets
             ),
             settings: settings
         )
@@ -373,6 +378,7 @@ final class LaunchpadStore: ObservableObject {
         hidden = Set(bundle.layout.hidden)
         freePositions = bundle.layout.freePositions
         freePages = bundle.layout.freePages
+        widgets = bundle.layout.widgets.map { $0.normalized() }
         applyImportedLayout(bundle.layout)
         sanitizeFreePlacement()
         save()
@@ -1294,6 +1300,58 @@ final class LaunchpadStore: ObservableObject {
         freePages = freePages
             .filter { valid.contains($0.key) }
             .mapValues { min(max($0, 0), Self.maxFreePage) }
+    }
+
+    // MARK: - Widgets (free-positioned & resizable)
+
+    func widgetsOnPage(_ page: Int) -> [WidgetItem] { widgets.filter { $0.page == page } }
+    func widget(_ id: String) -> WidgetItem? { widgets.first { $0.id == id } }
+
+    /// Add a widget to the centre-ish of the given page.
+    func addWidget(_ kind: WidgetKind, page: Int) {
+        var w = WidgetItem(id: "widget-" + UUID().uuidString, kind: kind, page: page)
+        // Default size by kind (normalized).
+        switch kind {
+        case .notes:   w.w = 0.26; w.h = 0.22
+        case .weather: w.w = 0.24; w.h = 0.18
+        default:       w.w = 0.20; w.h = 0.15
+        }
+        // Slight cascade so multiple new widgets don't stack exactly.
+        let n = Double(widgetsOnPage(page).count % 5)
+        w.x = min(0.85, 0.3 + n * 0.06)
+        w.y = min(0.85, 0.35 + n * 0.05)
+        widgets.append(w.normalized())
+        save()
+    }
+
+    func removeWidget(_ id: String) {
+        widgets.removeAll { $0.id == id }
+        save()
+    }
+
+    func updateWidgetText(_ id: String, _ text: String) {
+        guard let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].text = text
+        save()
+    }
+
+    /// Move a widget to a normalized centre derived from a drop point in page space.
+    func moveWidget(_ id: String, center: CGPoint, container: CGSize) {
+        guard container.width > 0, container.height > 0,
+              let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].x = min(max(center.x / container.width, 0), 1)
+        widgets[i].y = min(max(center.y / container.height, 0), 1)
+        widgets[i] = widgets[i].normalized()
+        save()
+    }
+
+    /// Resize a widget to a normalized size derived from a pixel size in page space.
+    func resizeWidget(_ id: String, size: CGSize, container: CGSize) {
+        guard container.width > 0, container.height > 0,
+              let i = widgets.firstIndex(where: { $0.id == id }) else { return }
+        widgets[i].w = min(max(size.width / container.width, 0.08), 0.9)
+        widgets[i].h = min(max(size.height / container.height, 0.06), 0.9)
+        save()
     }
 
     private func flip(next: Bool) {

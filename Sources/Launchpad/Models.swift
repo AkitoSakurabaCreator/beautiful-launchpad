@@ -33,6 +33,40 @@ struct CustomItem: Identifiable, Codable, Hashable {
     var iconPath: String? = nil
 }
 
+/// Kinds of widget tiles the user can place on the grid (free-positioned & resizable).
+enum WidgetKind: String, Codable, CaseIterable {
+    case clock     // live digital clock
+    case date      // current date + weekday
+    case notes     // editable sticky note
+    case battery   // battery percentage / charging
+    case system    // memory usage + uptime
+    case weather   // current conditions (network)
+}
+
+/// A user-placed widget. Position/size are normalized (0…1) within the page area so
+/// they survive window/display size changes. `id` is `"widget-<uuid>"`.
+struct WidgetItem: Identifiable, Codable, Hashable {
+    var id: String
+    var kind: WidgetKind
+    var page: Int = 0
+    var x: Double = 0.5       // normalized centre
+    var y: Double = 0.5
+    var w: Double = 0.22      // normalized size
+    var h: Double = 0.16
+    var text: String = ""     // notes content / per-widget config
+
+    /// Clamp every field into a safe range (defends against hand-edited files).
+    func normalized() -> WidgetItem {
+        var v = self
+        v.page = min(max(v.page, 0), 63)
+        v.x = min(max(v.x, 0), 1)
+        v.y = min(max(v.y, 0), 1)
+        v.w = min(max(v.w, 0.08), 0.9)
+        v.h = min(max(v.h, 0.06), 0.9)
+        return v
+    }
+}
+
 /// A user-created folder grouping several apps.
 struct Folder: Identifiable, Codable, Hashable {
     var id: String
@@ -58,19 +92,23 @@ struct PersistedLayout: Codable {
     /// Free-placement page assignment per id (which page the item sits on). Lets the
     /// user spread items across pages in free mode independent of `order`.
     var freePages: [String: Int]
+    /// User-placed widgets (free-positioned & resizable).
+    var widgets: [WidgetItem]
 
     init(order: [String], folders: [Folder], customItems: [CustomItem] = [],
-         hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:]) {
+         hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:],
+         widgets: [WidgetItem] = []) {
         self.order = order
         self.folders = folders
         self.customItems = customItems
         self.hidden = hidden
         self.freePositions = freePositions
         self.freePages = freePages
+        self.widgets = widgets
     }
 
     enum CodingKeys: String, CodingKey {
-        case order, folders, customItems, hidden, freePositions, freePages
+        case order, folders, customItems, hidden, freePositions, freePages, widgets
     }
 
     // Tolerate older files that predate newer fields (and partial/hand-edited JSON):
@@ -83,6 +121,7 @@ struct PersistedLayout: Codable {
         hidden = (try? c.decode([String].self, forKey: .hidden)) ?? []
         freePositions = (try? c.decode([String: CGPoint].self, forKey: .freePositions)) ?? [:]
         freePages = (try? c.decode([String: Int].self, forKey: .freePages)) ?? [:]
+        widgets = (try? c.decode([WidgetItem].self, forKey: .widgets)) ?? []
     }
 }
 
