@@ -528,7 +528,10 @@ final class LaunchpadStore: ObservableObject {
         if let custom = settings.launchSoundPath, FileManager.default.fileExists(atPath: custom) {
             path = custom
         } else {
-            path = "/System/Library/Sounds/\(settings.launchSoundName).aiff"
+            // Validate the preset name against the known list (an imported settings file
+            // could carry an arbitrary string); fall back to a safe default.
+            let name = Self.availableSounds.contains(settings.launchSoundName) ? settings.launchSoundName : "Pop"
+            path = "/System/Library/Sounds/\(name).aiff"
         }
         guard FileManager.default.fileExists(atPath: path) else { return }
         let p = Process()
