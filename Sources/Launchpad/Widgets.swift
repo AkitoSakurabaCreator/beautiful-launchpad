@@ -365,20 +365,23 @@ struct WidgetTileView: View {
         let handleZone: CGFloat = 26   // reserved space ABOVE the card for the handle
 
         // The handle lives in a zone ABOVE the card but still WITHIN the tile frame, so
-        // it protrudes outside the card yet stays hit-testable (offsetting it outside the
-        // frame rendered it but made it un-grabbable). The card rotates in place; the
-        // handle stays upright above it (computing rotation from the absolute cursor
-        // angle, so it never jitters).
+        // it protrudes outside the card yet stays hit-testable. The WHOLE tile (handle +
+        // card + resize/controls) rotates together around the CARD's centre, so every
+        // affordance stays attached to the rotated card (previously only the card rotated,
+        // leaving the handle / resize knob stranded in place).
         VStack(spacing: 0) {
             rotationHandleView(zone: handleZone)
                 .opacity(locked ? 0 : 1)
                 .allowsHitTesting(!locked)
             card(w, h)
-                .rotationEffect(.degrees(widget.rotation))
                 .overlay(alignment: .bottomTrailing) { if !locked { resizeHandle } }
                 .overlay(alignment: .bottom) { if hovering && !locked && isMedia { controlBar } }
         }
         .frame(width: w, height: h + handleZone)
+        // Rotate the whole tile around the CARD centre (not the frame centre, which sits
+        // inside the top handle zone).
+        .rotationEffect(.degrees(widget.rotation),
+                        anchor: UnitPoint(x: 0.5, y: (handleZone + h / 2) / (h + handleZone)))
         .onHover { hovering = $0 }
         .contextMenu { menuItems }
         // Frame includes the top handle zone; shift up so the CARD centre (not the
