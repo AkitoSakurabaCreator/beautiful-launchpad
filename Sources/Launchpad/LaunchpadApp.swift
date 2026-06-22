@@ -260,6 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store.presented &&
             !store.showSettings &&
             !store.showItemEditor &&
+            !store.showWidgetBuilder &&
             !store.showOnboarding &&
             store.openFolderID == nil
     }
