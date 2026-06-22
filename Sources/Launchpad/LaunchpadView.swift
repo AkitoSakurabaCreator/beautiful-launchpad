@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct LaunchpadView: View {
     @EnvironmentObject var store: LaunchpadStore
     @FocusState private var searchFocused: Bool
+    var videoHandledExternally: Bool = false
 
     var body: some View {
         ZStack {
@@ -14,7 +15,8 @@ struct LaunchpadView: View {
             // Per-page override applies only on the normal paged grid.
             BackgroundView(
                 settings: store.settings,
-                pageIndex: (store.isSearching || store.openFolderID != nil) ? nil : store.currentPage
+                pageIndex: (store.isSearching || store.openFolderID != nil) ? nil : store.currentPage,
+                videoHandledExternally: videoHandledExternally
             )
             .opacity(store.presented ? 1 : 0)
 
@@ -49,7 +51,14 @@ struct LaunchpadView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(10)
-                            .background(Circle().fill(Color.black.opacity(0.32)))
+                            .background {
+                                if store.settings.layoutStyle == .glass {
+                                    LiquidGlassBackground(shape: Circle(), tint: GlassPalette.coolEdge,
+                                                          strokeOpacity: 0.42, shadowOpacity: 0.20)
+                                } else {
+                                    Circle().fill(Color.black.opacity(0.32))
+                                }
+                            }
                             .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
                             .shadow(color: .black.opacity(0.35), radius: 3, x: 0, y: 1)
                     }
@@ -154,6 +163,9 @@ struct PageGrid: View {
             }
         }
         .frame(width: areaSize.width, height: areaSize.height)
+        // Page-local space so the widget rotation handle reads cursor position in the
+        // same coordinates as widget centres (widget.x * areaSize).
+        .coordinateSpace(name: WidgetLayer.coordinateSpace)
         .animation(store.settings.anim(0.2), value: items)
         .onDrop(
             of: [UTType.text],
@@ -243,6 +255,10 @@ struct PageGrid: View {
                 NSWorkspace.shared.activateFileViewerSelecting([app.url])
             }
         }
+        Button(store.t(.chooseIcon)) { store.chooseIconOverride(for: id) }
+        if store.hasIconOverride(id) {
+            Button(store.t(.clearIcon)) { store.clearIconOverride(for: id) }
+        }
         Button(store.t(.hide)) { store.hide(id) }
         Divider()
         Button(store.t(.addItem)) { store.beginAddItem() }
@@ -254,6 +270,7 @@ struct SearchField: View {
     @EnvironmentObject var store: LaunchpadStore
     @Binding var text: String
     var focused: FocusState<Bool>.Binding
+    private var isGlass: Bool { store.settings.layoutStyle == .glass }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -276,8 +293,15 @@ struct SearchField: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
-        .background(Capsule().fill(Color.white.opacity(0.16)))
-        .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+        .background {
+            if isGlass {
+                LiquidGlassBackground(shape: Capsule(), tint: GlassPalette.coolEdge,
+                                      strokeOpacity: 0.40, shadowOpacity: 0.16)
+            } else {
+                Capsule().fill(Color.white.opacity(0.16))
+            }
+        }
+        .overlay(Capsule().stroke(Color.white.opacity(isGlass ? 0.28 : 0.12), lineWidth: 1))
     }
 }
 
