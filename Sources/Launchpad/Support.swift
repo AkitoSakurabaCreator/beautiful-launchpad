@@ -82,10 +82,24 @@ enum GlassPalette {
     }
 }
 
+extension AppSettings {
+    var usesVideoBackground: Bool {
+        guard backgroundKind == .video else { return false }
+        if let folder = videoFolder, !folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        if let path = videoPath, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return false
+    }
+}
+
 struct LiquidGlassBackground<S: InsettableShape>: View {
     let shape: S
     var tint: Color = GlassPalette.accent
     var transparency: Double = 0
+    var reduceLiveBlur: Bool = false
     var materialOpacity: Double = 1.0
     var sheenOpacity: Double = 0.18
     var tintOpacity: Double = 0.08
@@ -95,46 +109,68 @@ struct LiquidGlassBackground<S: InsettableShape>: View {
     var shadowOpacity: Double = 0.22
 
     private func adjusted(_ base: Double, reduction: Double = 0.65) -> Double {
-        GlassPalette.adjustedOpacity(base, transparency: transparency, reduction: reduction)
+        GlassPalette.adjustedOpacity(
+            base,
+            transparency: transparency,
+            reduction: reduceLiveBlur ? max(reduction, 0.78) : reduction
+        )
     }
 
     var body: some View {
-        shape
-            .fill(.ultraThinMaterial)
-            .opacity(adjusted(materialOpacity))
-            .overlay(
-                shape.fill(
-                    LinearGradient(
-                        colors: [
-                            GlassPalette.sheen.opacity(adjusted(sheenOpacity, reduction: 0.55)),
-                            tint.opacity(adjusted(tintOpacity, reduction: 0.55)),
-                            GlassPalette.warmEdge.opacity(adjusted(warmOpacity, reduction: 0.55)),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+        ZStack {
+            baseLayer
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        GlassPalette.sheen.opacity(adjusted(sheenOpacity * liveBlurScale, reduction: 0.55)),
+                        tint.opacity(adjusted(tintOpacity * liveBlurScale, reduction: 0.55)),
+                        GlassPalette.warmEdge.opacity(adjusted(warmOpacity * liveBlurScale, reduction: 0.55)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
             )
-            .overlay(
-                shape.strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            GlassPalette.sheen.opacity(adjusted(strokeOpacity + 0.10, reduction: 0.30)),
-                            GlassPalette.coolEdge.opacity(adjusted(strokeOpacity, reduction: 0.30)),
-                            GlassPalette.warmEdge.opacity(adjusted(strokeOpacity * 0.65, reduction: 0.30)),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [
+                        GlassPalette.sheen.opacity(adjusted(strokeOpacity + 0.10, reduction: 0.30)),
+                        GlassPalette.coolEdge.opacity(adjusted(strokeOpacity, reduction: 0.30)),
+                        GlassPalette.warmEdge.opacity(adjusted(strokeOpacity * 0.65, reduction: 0.30)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            shape
+                .strokeBorder(Color.white.opacity(adjusted(innerStrokeOpacity, reduction: 0.45)), lineWidth: 0.5)
+                .blur(radius: reduceLiveBlur ? 0.25 : 0.6)
+        }
+        .shadow(color: tint.opacity(adjusted(shadowOpacity * liveBlurScale, reduction: 0.45)),
+                radius: reduceLiveBlur ? 4 : 12, x: 0, y: reduceLiveBlur ? 2 : 5)
+        .shadow(color: .black.opacity(adjusted(0.10 * liveBlurScale, reduction: 0.35)),
+                radius: reduceLiveBlur ? 3 : 10, x: 0, y: reduceLiveBlur ? 2 : 6)
+    }
+
+    private var liveBlurScale: Double { reduceLiveBlur ? 0.42 : 1 }
+
+    @ViewBuilder
+    private var baseLayer: some View {
+        if reduceLiveBlur {
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        GlassPalette.sheen.opacity(adjusted(materialOpacity * 0.16, reduction: 0.30)),
+                        tint.opacity(adjusted(materialOpacity * 0.10, reduction: 0.30)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
             )
-            .overlay(
-                shape
-                    .strokeBorder(Color.white.opacity(adjusted(innerStrokeOpacity, reduction: 0.45)), lineWidth: 0.5)
-                    .blur(radius: 0.6)
-            )
-            .shadow(color: tint.opacity(adjusted(shadowOpacity, reduction: 0.45)), radius: 12, x: 0, y: 5)
-            .shadow(color: .black.opacity(adjusted(0.10, reduction: 0.35)), radius: 10, x: 0, y: 6)
+        } else {
+            shape
+                .fill(.ultraThinMaterial)
+                .opacity(adjusted(materialOpacity))
+        }
     }
 }

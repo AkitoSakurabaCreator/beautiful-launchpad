@@ -8,6 +8,7 @@ struct LaunchpadView: View {
     @EnvironmentObject var store: LaunchpadStore
     @FocusState private var searchFocused: Bool
     var videoHandledExternally: Bool = false
+    private var shouldAutoFocusSearch: Bool { !store.settings.usesVideoBackground }
 
     var body: some View {
         ZStack {
@@ -55,6 +56,7 @@ struct LaunchpadView: View {
                                 if store.settings.layoutStyle == .glass {
                                     LiquidGlassBackground(shape: Circle(), tint: GlassPalette.coolEdge,
                                                           transparency: store.settings.glassTransparency,
+                                                          reduceLiveBlur: store.settings.usesVideoBackground,
                                                           strokeOpacity: 0.42, shadowOpacity: 0.20)
                                 } else {
                                     Circle().fill(Color.black.opacity(0.32))
@@ -98,10 +100,13 @@ struct LaunchpadView: View {
         }
         .onDrop(of: [UTType.text], delegate: RootDropDelegate(store: store))
         .onAppear {
-            searchFocused = true
+            searchFocused = shouldAutoFocusSearch
             withAnimation(store.settings.openAnim) { store.presented = true }
         }
         .onChange(of: store.searchText) { _ in store.currentPage = 0 }
+        .onChange(of: store.settings.usesVideoBackground) { _ in
+            searchFocused = shouldAutoFocusSearch
+        }
         .animation(store.settings.anim(0.2), value: store.openFolderID)
         .animation(store.settings.anim(0.2), value: store.showSettings)
         .animation(store.settings.anim(0.2), value: store.showItemEditor)
@@ -305,6 +310,7 @@ struct SearchField: View {
             if isGlass {
                 LiquidGlassBackground(shape: Capsule(), tint: GlassPalette.coolEdge,
                                       transparency: store.settings.glassTransparency,
+                                      reduceLiveBlur: store.settings.usesVideoBackground,
                                       strokeOpacity: 0.40, shadowOpacity: 0.16)
             } else {
                 Capsule().fill(Color.white.opacity(0.16))

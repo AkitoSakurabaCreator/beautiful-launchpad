@@ -106,6 +106,7 @@ struct AddEditItemView: View {
                         shape: RoundedRectangle(cornerRadius: 28, style: .continuous),
                         tint: GlassPalette.coolEdge,
                         transparency: glassTransparency,
+                        reduceLiveBlur: store.settings.usesVideoBackground,
                         strokeOpacity: 0.40,
                         shadowOpacity: 0.22
                     )

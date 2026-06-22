@@ -106,6 +106,7 @@ struct FolderOverlayView: View {
                                 shape: RoundedRectangle(cornerRadius: 28, style: .continuous),
                                 tint: GlassPalette.coolEdge,
                                 transparency: glassTransparency,
+                                reduceLiveBlur: store.settings.usesVideoBackground,
                                 materialOpacity: 0.42,
                                 sheenOpacity: 0.10,
                                 tintOpacity: 0.035,
@@ -177,6 +178,7 @@ struct FolderOverlayView: View {
                                 if isGlass {
                                     LiquidGlassBackground(shape: Circle(), tint: GlassPalette.coolEdge,
                                                           transparency: glassTransparency,
+                                                          reduceLiveBlur: store.settings.usesVideoBackground,
                                                           materialOpacity: 0.35,
                                                           sheenOpacity: 0.09,
                                                           tintOpacity: 0.03,

@@ -76,6 +76,7 @@ struct AppIconView: View {
                     shape: RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous),
                     tint: GlassPalette.coolEdge,
                     transparency: store.settings.glassTransparency,
+                    reduceLiveBlur: store.settings.usesVideoBackground,
                     strokeOpacity: 0.42,
                     shadowOpacity: 0.20
                 )
@@ -191,6 +192,7 @@ struct FolderIconView: View {
                                 shape: RoundedRectangle(cornerRadius: rad, style: .continuous),
                                 tint: glassAccent,
                                 transparency: store.settings.glassTransparency,
+                                reduceLiveBlur: store.settings.usesVideoBackground,
                                 materialOpacity: 0.45,
                                 sheenOpacity: 0.10,
                                 tintOpacity: 0.035,

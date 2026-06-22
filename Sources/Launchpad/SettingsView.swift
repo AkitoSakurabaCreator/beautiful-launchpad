@@ -77,6 +77,7 @@ struct SettingsView: View {
                         shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
                         tint: GlassPalette.coolEdge,
                         transparency: glassTransparency,
+                        reduceLiveBlur: store.settings.usesVideoBackground,
                         strokeOpacity: 0.40,
                         shadowOpacity: 0.24
                     )

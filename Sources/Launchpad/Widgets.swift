@@ -411,13 +411,13 @@ struct WidgetTileView: View {
         .background(cardBackground)
         .overlay(cardBorder)
         .shadow(color: transparent ? .clear : shadowColor,
-                radius: transparent ? 0 : (cyber ? 8 : (glass ? 14 : 4)),
-                x: 0, y: glass ? 8 : 0)
+                radius: transparent ? 0 : (cyber ? 8 : (glass ? (store.settings.usesVideoBackground ? 5 : 14) : 4)),
+                x: 0, y: glass ? (store.settings.usesVideoBackground ? 3 : 8) : 0)
     }
 
     private var shadowColor: Color {
         if cyber { return CyberPalette.neon.opacity(0.5) }
-        if glass { return GlassPalette.coolEdge.opacity(0.18) }
+        if glass { return GlassPalette.coolEdge.opacity(store.settings.usesVideoBackground ? 0.08 : 0.18) }
         return .black.opacity(0.3)
     }
 
@@ -428,6 +428,7 @@ struct WidgetTileView: View {
                     shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
                     tint: GlassPalette.coolEdge,
                     transparency: store.settings.glassTransparency,
+                    reduceLiveBlur: store.settings.usesVideoBackground,
                     strokeOpacity: 0.34,
                     shadowOpacity: 0.12
                 )
@@ -587,6 +588,7 @@ struct WidgetTileView: View {
                 LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous),
                                       tint: GlassPalette.coolEdge,
                                       transparency: store.settings.glassTransparency,
+                                      reduceLiveBlur: store.settings.usesVideoBackground,
                                       strokeOpacity: 0.34,
                                       shadowOpacity: 0.10)
             } else {
