@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Borderless windows cannot become key by default; allow it so the search field
@@ -6,6 +7,13 @@ import SwiftUI
 final class KeyableWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+/// Dedicated video window kept behind the interactive SwiftUI overlay. It must not
+/// become key, otherwise search/settings keyboard focus can move away from Launchpad.
+final class VideoBackgroundWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 }
 
 @main
@@ -22,8 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = LaunchpadStore()
     let updater = UpdaterController()
     private var window: KeyableWindow?
+    private var videoWindow: VideoBackgroundWindow?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
+    private var videoBackgroundView: PlayerContainerView?
+    private var settingsCancellable: AnyCancellable?
+    private var videoActivity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -53,19 +65,125 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         win.isMovableByWindowBackground = false
         win.setFrame(frame, display: true)
 
-        let root = LaunchpadView()
+        let root = LaunchpadView(videoHandledExternally: true)
             .environmentObject(store)
             .environmentObject(updater)
         let hosting = NSHostingView(rootView: root)
         hosting.frame = NSRect(origin: .zero, size: frame.size)
         hosting.autoresizingMask = [.width, .height]
+        hosting.wantsLayer = true
+        hosting.layer?.isOpaque = false
+        hosting.layer?.backgroundColor = NSColor.clear.cgColor
         win.contentView = hosting
 
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
+        settingsCancellable = store.$settings
+            .receive(on: RunLoop.main)
+            .sink { [weak self] settings in
+                self?.updateExternalVideoBackground(settings)
+            }
+        updateExternalVideoBackground(store.settings)
 
         installEventMonitors()
+    }
+
+    private func updateExternalVideoBackground(_ settings: AppSettings) {
+        guard settings.backgroundKind == .video else {
+            hideExternalVideoBackground()
+            return
+        }
+
+        let paths: [String]
+        let random: Bool
+        if let folder = settings.videoFolder {
+            paths = videoFiles(in: folder)
+            random = settings.videoRandom
+        } else if let path = settings.videoPath {
+            paths = [(path as NSString).expandingTildeInPath]
+            random = false
+        } else {
+            paths = []
+            random = false
+        }
+
+        let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }
+        guard !existing.isEmpty else {
+            hideExternalVideoBackground()
+            return
+        }
+
+        let videoView = ensureVideoBackgroundView()
+        videoView.configure(
+            paths: existing,
+            random: random,
+            muted: settings.videoMuted,
+            volume: settings.videoVolume
+        )
+        orderVideoWindowBehindForeground()
+        setVideoActivity(true)
+    }
+
+    private func ensureVideoBackgroundView() -> PlayerContainerView {
+        let frame = window?.frame ?? NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        if let videoBackgroundView {
+            videoBackgroundView.frame = NSRect(origin: .zero, size: frame.size)
+            videoWindow?.setFrame(frame, display: true)
+            videoWindow?.orderFront(nil)
+            return videoBackgroundView
+        }
+
+        let videoWin = VideoBackgroundWindow(
+            contentRect: frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        videoWin.isOpaque = false
+        videoWin.backgroundColor = .clear
+        videoWin.hasShadow = false
+        videoWin.level = .normal
+        videoWin.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        videoWin.ignoresMouseEvents = true
+        videoWin.isMovableByWindowBackground = false
+        videoWin.isReleasedWhenClosed = false
+        videoWin.setFrame(frame, display: true)
+
+        let videoView = PlayerContainerView(frame: NSRect(origin: .zero, size: frame.size))
+        videoView.autoresizingMask = [.width, .height]
+        videoWin.contentView = videoView
+
+        videoWindow = videoWin
+        videoBackgroundView = videoView
+        videoWin.orderFront(nil)
+        return videoView
+    }
+
+    private func hideExternalVideoBackground() {
+        videoBackgroundView?.teardown()
+        videoWindow?.orderOut(nil)
+        setVideoActivity(false)
+    }
+
+    private func orderVideoWindowBehindForeground() {
+        guard let window, let videoWindow else { return }
+        videoWindow.setFrame(window.frame, display: true)
+        videoWindow.orderFront(nil)
+        videoWindow.order(.below, relativeTo: window.windowNumber)
+    }
+
+    private func setVideoActivity(_ active: Bool) {
+        if active {
+            guard videoActivity == nil else { return }
+            videoActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .latencyCritical],
+                reason: "Playing Launchpad video background"
+            )
+        } else if let activity = videoActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            videoActivity = nil
+        }
     }
 
     private func installEventMonitors() {
@@ -91,6 +209,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return event
             default:
+                if self.routeSearchKeyIfNeeded(event) {
+                    return nil
+                }
                 return event
             }
         }
@@ -108,6 +229,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func routeSearchKeyIfNeeded(_ event: NSEvent) -> Bool {
+        guard shouldRouteSearchKeys else { return false }
+        // If the user explicitly clicked into any text editor, keep native editing
+        // semantics (selection, cursor movement, IME composition, etc.).
+        guard !(window?.firstResponder is NSTextView) else { return false }
+
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .function])
+        guard modifiers.isEmpty else { return false }
+
+        if event.keyCode == 51 { // delete / backspace
+            guard !store.searchText.isEmpty else { return false }
+            store.searchText.removeLast()
+            store.currentPage = 0
+            return true
+        }
+
+        guard let chars = event.characters,
+              chars.count == 1,
+              chars.rangeOfCharacter(from: .controlCharacters) == nil
+        else { return false }
+
+        store.searchText.append(chars)
+        store.currentPage = 0
+        return true
+    }
+
+    private var shouldRouteSearchKeys: Bool {
+        store.settings.usesVideoBackground &&
+            store.presented &&
+            !store.showSettings &&
+            !store.showItemEditor &&
+            !store.showOnboarding &&
+            store.openFolderID == nil
+    }
+
     /// Become a true full-screen overlay: hide the menu bar and Dock while the
     /// Launchpad is up so nothing peeks through at the top/edges of the screen.
     /// They are restored automatically when the app stops being frontmost or
@@ -117,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// export/import/colour panels still appear above it.
     func applicationDidBecomeActive(_ notification: Notification) {
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
+        orderVideoWindowBehindForeground()
     }
 
     /// Classic Launchpad dismisses itself the moment it is no longer frontmost
@@ -137,5 +294,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        videoBackgroundView?.teardown()
+        videoWindow?.close()
+        setVideoActivity(false)
     }
 }

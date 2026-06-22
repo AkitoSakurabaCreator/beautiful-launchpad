@@ -137,10 +137,12 @@ struct PersistedLayout: Codable {
     var freePages: [String: Int]
     /// User-placed widgets (free-positioned & resizable).
     var widgets: [WidgetItem]
+    /// Per-app tile icon overrides keyed by app/custom id.
+    var iconOverrides: [String: String]
 
     init(order: [String], folders: [Folder], customItems: [CustomItem] = [],
          hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:],
-         widgets: [WidgetItem] = []) {
+         widgets: [WidgetItem] = [], iconOverrides: [String: String] = [:]) {
         self.order = order
         self.folders = folders
         self.customItems = customItems
@@ -148,10 +150,11 @@ struct PersistedLayout: Codable {
         self.freePositions = freePositions
         self.freePages = freePages
         self.widgets = widgets
+        self.iconOverrides = iconOverrides
     }
 
     enum CodingKeys: String, CodingKey {
-        case order, folders, customItems, hidden, freePositions, freePages, widgets
+        case order, folders, customItems, hidden, freePositions, freePages, widgets, iconOverrides
     }
 
     // Tolerate older files that predate newer fields (and partial/hand-edited JSON):
@@ -165,6 +168,7 @@ struct PersistedLayout: Codable {
         freePositions = (try? c.decode([String: CGPoint].self, forKey: .freePositions)) ?? [:]
         freePages = (try? c.decode([String: Int].self, forKey: .freePages)) ?? [:]
         widgets = (try? c.decode([WidgetItem].self, forKey: .widgets)) ?? []
+        iconOverrides = (try? c.decode([String: String].self, forKey: .iconOverrides)) ?? [:]
     }
 }
 
@@ -190,6 +194,7 @@ enum OpenAnimation: String, Codable, CaseIterable {
 /// restyle icon shape, label, density, and accent to evoke other desktops.
 enum LayoutStyle: String, Codable, CaseIterable {
     case classic   // macOS Launchpad
+    case glass     // Liquid Glass-inspired translucent surfaces
     case android   // rounded/larger icons, label-forward
     case windows   // tile-like square icons, denser grid
     case cyber     // neon-bordered glowing tiles, dark glass folders, cyan labels
@@ -241,6 +246,8 @@ struct AppSettings: Codable {
     // Layout / placement
     var freePlacement: Bool = false
     var layoutStyle: LayoutStyle = .classic
+    /// Glass surface transparency, 0…1. Larger values make Glass clearer.
+    var glassTransparency: Double = 0.55
 
     // Video / slideshow backgrounds
     var videoPath: String? = nil
@@ -262,7 +269,7 @@ struct AppSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case backgroundKind, themeIndex, solidColorHex, wallpaperPath, columns, rows, dim, showLabels, language
         case blurIntensity, folderColumns, folderRows, launchSound, launchSoundName, launchSoundPath, videoMuted, videoVolume
-        case animationsEnabled, animationSpeed, openAnimation, freePlacement, layoutStyle
+        case animationsEnabled, animationSpeed, openAnimation, freePlacement, layoutStyle, glassTransparency
         case videoPath, videoFolder, videoRandom, slideshowFolder, slideshowInterval, slideshowRandom, pageBackgrounds, onboardingShown
     }
 
@@ -292,6 +299,7 @@ struct AppSettings: Codable {
         openAnimation = (try? c.decode(OpenAnimation.self, forKey: .openAnimation)) ?? .zoom
         freePlacement = (try? c.decode(Bool.self, forKey: .freePlacement)) ?? false
         layoutStyle = (try? c.decode(LayoutStyle.self, forKey: .layoutStyle)) ?? .classic
+        glassTransparency = (try? c.decode(Double.self, forKey: .glassTransparency)) ?? 0.55
         videoPath = try? c.decodeIfPresent(String.self, forKey: .videoPath)
         videoFolder = try? c.decodeIfPresent(String.self, forKey: .videoFolder)
         videoRandom = (try? c.decode(Bool.self, forKey: .videoRandom)) ?? true
@@ -323,6 +331,7 @@ struct AppSettings: Codable {
         s.folderColumns = min(max(s.folderColumns, 3), 8)
         s.folderRows = min(max(s.folderRows, 2), 6)
         s.animationSpeed = min(max(s.animationSpeed, 0.25), 3.0)
+        s.glassTransparency = min(max(s.glassTransparency, 0), 1)
         s.slideshowInterval = min(max(s.slideshowInterval, 3), 600)
         return s
     }
@@ -333,4 +342,25 @@ struct ExportBundle: Codable {
     var version: Int = 1
     var layout: PersistedLayout
     var settings: AppSettings
+}
+
+/// A named, in-app **design** preset: a snapshot of the appearance settings only
+/// (background, theme, layout style, animation, blur, …). Applying it changes the look
+/// without touching the user's app arrangement / folders / widgets. `id` = `"preset-<uuid>"`.
+struct Preset: Identifiable, Codable {
+    var id: String
+    var name: String
+    var settings: AppSettings
+
+    enum CodingKeys: String, CodingKey { case id, name, settings }
+}
+
+extension Preset {
+    // Decode-tolerant so an older preset file shape doesn't drop the whole list.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? "preset-" + UUID().uuidString
+        name = (try? c.decode(String.self, forKey: .name)) ?? "Preset"
+        settings = (try? c.decode(AppSettings.self, forKey: .settings))?.normalized() ?? AppSettings()
+    }
 }

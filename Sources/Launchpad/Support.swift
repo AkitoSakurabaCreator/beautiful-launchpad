@@ -69,3 +69,108 @@ struct VisualEffectView: NSViewRepresentable {
         nsView.state = .active
     }
 }
+
+enum GlassPalette {
+    static let accent = Color(hex: "#D7F7FF")
+    static let sheen = Color(hex: "#FFFFFF")
+    static let coolEdge = Color(hex: "#90D7FF")
+    static let warmEdge = Color(hex: "#FFDDF7")
+
+    static func adjustedOpacity(_ base: Double, transparency: Double, reduction: Double = 0.65) -> Double {
+        let t = min(max(transparency, 0), 1)
+        return min(max(base * (1 - t * reduction), 0), 1)
+    }
+}
+
+extension AppSettings {
+    var usesVideoBackground: Bool {
+        guard backgroundKind == .video else { return false }
+        if let folder = videoFolder, !folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        if let path = videoPath, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return false
+    }
+}
+
+struct LiquidGlassBackground<S: InsettableShape>: View {
+    let shape: S
+    var tint: Color = GlassPalette.accent
+    var transparency: Double = 0
+    var reduceLiveBlur: Bool = false
+    var materialOpacity: Double = 1.0
+    var sheenOpacity: Double = 0.18
+    var tintOpacity: Double = 0.08
+    var warmOpacity: Double = 0.04
+    var innerStrokeOpacity: Double = 0.12
+    var strokeOpacity: Double = 0.34
+    var shadowOpacity: Double = 0.22
+
+    private func adjusted(_ base: Double, reduction: Double = 0.65) -> Double {
+        GlassPalette.adjustedOpacity(
+            base,
+            transparency: transparency,
+            reduction: reduceLiveBlur ? max(reduction, 0.78) : reduction
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            baseLayer
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        GlassPalette.sheen.opacity(adjusted(sheenOpacity * liveBlurScale, reduction: 0.55)),
+                        tint.opacity(adjusted(tintOpacity * liveBlurScale, reduction: 0.55)),
+                        GlassPalette.warmEdge.opacity(adjusted(warmOpacity * liveBlurScale, reduction: 0.55)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [
+                        GlassPalette.sheen.opacity(adjusted(strokeOpacity + 0.10, reduction: 0.30)),
+                        GlassPalette.coolEdge.opacity(adjusted(strokeOpacity, reduction: 0.30)),
+                        GlassPalette.warmEdge.opacity(adjusted(strokeOpacity * 0.65, reduction: 0.30)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            shape
+                .strokeBorder(Color.white.opacity(adjusted(innerStrokeOpacity, reduction: 0.45)), lineWidth: 0.5)
+                .blur(radius: reduceLiveBlur ? 0.25 : 0.6)
+        }
+        .shadow(color: tint.opacity(adjusted(shadowOpacity * liveBlurScale, reduction: 0.45)),
+                radius: reduceLiveBlur ? 4 : 12, x: 0, y: reduceLiveBlur ? 2 : 5)
+        .shadow(color: .black.opacity(adjusted(0.10 * liveBlurScale, reduction: 0.35)),
+                radius: reduceLiveBlur ? 3 : 10, x: 0, y: reduceLiveBlur ? 2 : 6)
+    }
+
+    private var liveBlurScale: Double { reduceLiveBlur ? 0.42 : 1 }
+
+    @ViewBuilder
+    private var baseLayer: some View {
+        if reduceLiveBlur {
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        GlassPalette.sheen.opacity(adjusted(materialOpacity * 0.16, reduction: 0.30)),
+                        tint.opacity(adjusted(materialOpacity * 0.10, reduction: 0.30)),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        } else {
+            shape
+                .fill(.ultraThinMaterial)
+                .opacity(adjusted(materialOpacity))
+        }
+    }
+}
