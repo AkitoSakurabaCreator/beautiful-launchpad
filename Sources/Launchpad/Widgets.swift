@@ -492,16 +492,17 @@ struct WidgetTileView: View {
     /// tracks the pointer smoothly instead of jittering.
     private var rotationHandle: some View {
         Image(systemName: "arrow.clockwise")
-            .font(.system(size: 9, weight: .bold))
+            .font(.system(size: 10, weight: .bold))
             .foregroundColor(.white)
-            .frame(width: 18, height: 18)
+            .frame(width: 22, height: 22)
             .background(Circle().fill(Color.black.opacity(0.55)))
             .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            // Keep it INSIDE the tile's frame (top edge). Offsetting it outside the
-            // frame renders it but makes it un-hittable (SwiftUI hit-tests within bounds).
-            .offset(y: 2)
             .opacity(hovering ? 1 : 0.5)
-            .contentShape(Circle())
+            // Visible knob stays small, but the grab area is a wider transparent zone
+            // (extending DOWN into the tile — up would be outside the frame & un-hittable).
+            .frame(width: 56, height: 44, alignment: .top)
+            .offset(y: 2)
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(coordinateSpace: .named(WidgetLayer.coordinateSpace))
                     .onChanged { v in
