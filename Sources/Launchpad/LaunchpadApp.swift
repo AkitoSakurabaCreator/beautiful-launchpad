@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Borderless windows cannot become key by default; allow it so the search field
@@ -24,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: KeyableWindow?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
+    private var videoBackgroundView: PlayerContainerView?
+    private var settingsCancellable: AnyCancellable?
+    private var videoActivity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -53,19 +57,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         win.isMovableByWindowBackground = false
         win.setFrame(frame, display: true)
 
-        let root = LaunchpadView()
+        let container = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        container.autoresizingMask = [.width, .height]
+
+        let videoBackground = PlayerContainerView(frame: container.bounds)
+        videoBackground.autoresizingMask = [.width, .height]
+        videoBackground.isHidden = true
+        container.addSubview(videoBackground)
+
+        let root = LaunchpadView(videoHandledExternally: true)
             .environmentObject(store)
             .environmentObject(updater)
         let hosting = NSHostingView(rootView: root)
-        hosting.frame = NSRect(origin: .zero, size: frame.size)
+        hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
-        win.contentView = hosting
+        hosting.wantsLayer = true
+        hosting.layer?.isOpaque = false
+        hosting.layer?.backgroundColor = NSColor.clear.cgColor
+        container.addSubview(hosting)
+        win.contentView = container
 
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
+        self.videoBackgroundView = videoBackground
+        settingsCancellable = store.$settings
+            .receive(on: RunLoop.main)
+            .sink { [weak self] settings in
+                self?.updateExternalVideoBackground(settings)
+            }
+        updateExternalVideoBackground(store.settings)
 
         installEventMonitors()
+    }
+
+    private func updateExternalVideoBackground(_ settings: AppSettings) {
+        guard let videoBackgroundView else { return }
+        guard settings.backgroundKind == .video else {
+            videoBackgroundView.isHidden = true
+            videoBackgroundView.teardown()
+            setVideoActivity(false)
+            return
+        }
+
+        let paths: [String]
+        let random: Bool
+        if let folder = settings.videoFolder {
+            paths = videoFiles(in: folder)
+            random = settings.videoRandom
+        } else if let path = settings.videoPath {
+            paths = [(path as NSString).expandingTildeInPath]
+            random = false
+        } else {
+            paths = []
+            random = false
+        }
+
+        let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }
+        guard !existing.isEmpty else {
+            videoBackgroundView.isHidden = true
+            videoBackgroundView.teardown()
+            setVideoActivity(false)
+            return
+        }
+
+        videoBackgroundView.isHidden = false
+        videoBackgroundView.configure(
+            paths: existing,
+            random: random,
+            muted: settings.videoMuted,
+            volume: settings.videoVolume
+        )
+        setVideoActivity(true)
+    }
+
+    private func setVideoActivity(_ active: Bool) {
+        if active {
+            guard videoActivity == nil else { return }
+            videoActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .latencyCritical],
+                reason: "Playing Launchpad video background"
+            )
+        } else if let activity = videoActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            videoActivity = nil
+        }
     }
 
     private func installEventMonitors() {
@@ -137,5 +213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        videoBackgroundView?.teardown()
+        setVideoActivity(false)
     }
 }

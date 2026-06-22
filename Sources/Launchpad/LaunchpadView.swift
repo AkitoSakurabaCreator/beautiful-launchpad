@@ -54,12 +54,20 @@ struct LaunchpadView: View {
                             .background {
                                 if store.settings.layoutStyle == .glass {
                                     LiquidGlassBackground(shape: Circle(), tint: GlassPalette.coolEdge,
+                                                          transparency: store.settings.glassTransparency,
                                                           strokeOpacity: 0.42, shadowOpacity: 0.20)
                                 } else {
                                     Circle().fill(Color.black.opacity(0.32))
                                 }
                             }
-                            .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
+                            .overlay(
+                                Circle().stroke(
+                                    Color.white.opacity(store.settings.layoutStyle == .glass
+                                        ? GlassPalette.adjustedOpacity(0.25, transparency: store.settings.glassTransparency, reduction: 0.35)
+                                        : 0.25),
+                                    lineWidth: 1
+                                )
+                            )
                             .shadow(color: .black.opacity(0.35), radius: 3, x: 0, y: 1)
                     }
                     .buttonStyle(.plain)
@@ -296,12 +304,20 @@ struct SearchField: View {
         .background {
             if isGlass {
                 LiquidGlassBackground(shape: Capsule(), tint: GlassPalette.coolEdge,
+                                      transparency: store.settings.glassTransparency,
                                       strokeOpacity: 0.40, shadowOpacity: 0.16)
             } else {
                 Capsule().fill(Color.white.opacity(0.16))
             }
         }
-        .overlay(Capsule().stroke(Color.white.opacity(isGlass ? 0.28 : 0.12), lineWidth: 1))
+        .overlay(
+            Capsule().stroke(
+                Color.white.opacity(isGlass
+                    ? GlassPalette.adjustedOpacity(0.28, transparency: store.settings.glassTransparency, reduction: 0.35)
+                    : 0.12),
+                lineWidth: 1
+            )
+        )
     }
 }
 

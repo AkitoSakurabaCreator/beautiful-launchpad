@@ -437,8 +437,13 @@ struct WidgetTileView: View {
 
     @ViewBuilder private var cardBorder: some View {
         if !widget.transparent {
+            let glassStrokeOpacity = GlassPalette.adjustedOpacity(
+                0.30,
+                transparency: store.settings.glassTransparency,
+                reduction: 0.35
+            )
             RoundedRectangle(cornerRadius: glass ? 16 : 14, style: .continuous)
-                .stroke((cyber ? CyberPalette.neon : (glass ? GlassPalette.sheen : Color.white)).opacity(cyber ? 0.85 : (glass ? 0.30 : 0.18)),
+                .stroke((cyber ? CyberPalette.neon : (glass ? GlassPalette.sheen : Color.white)).opacity(cyber ? 0.85 : (glass ? glassStrokeOpacity : 0.18)),
                         lineWidth: (cyber || glass) ? 1.5 : 1)
         }
     }

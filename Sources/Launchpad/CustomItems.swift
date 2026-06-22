@@ -15,10 +15,13 @@ struct AddEditItemView: View {
     @State private var loaded = false
 
     private var isEditing: Bool { store.editingItemId != nil }
+    private var isGlass: Bool { store.settings.layoutStyle == .glass }
+    private var glassTransparency: Double { store.settings.glassTransparency }
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Color.black.opacity(isGlass ? 0.30 : 0.5)
+                .opacity(isGlass ? GlassPalette.adjustedOpacity(1, transparency: glassTransparency, reduction: 0.55) : 1)
                 .ignoresSafeArea()
                 .onTapGesture { store.closeItemEditor() }
 
@@ -86,19 +89,40 @@ struct AddEditItemView: View {
             }
             .padding(26)
             .frame(width: 520)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
-            )
+            .background(panelBackground)
             .foregroundColor(.white)
             .padding(40)
             .transition(.scale(scale: 0.94).combined(with: .opacity))
         }
         .onAppear(perform: loadIfNeeded)
+    }
+
+    private var panelBackground: some View {
+        RoundedRectangle(cornerRadius: isGlass ? 28 : 22, style: .continuous)
+            .fill(isGlass ? Color.clear : Color.white.opacity(0.001))
+            .background {
+                if isGlass {
+                    LiquidGlassBackground(
+                        shape: RoundedRectangle(cornerRadius: 28, style: .continuous),
+                        tint: GlassPalette.coolEdge,
+                        transparency: glassTransparency,
+                        strokeOpacity: 0.40,
+                        shadowOpacity: 0.22
+                    )
+                } else {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: isGlass ? 28 : 22, style: .continuous)
+                    .stroke(
+                        Color.white.opacity(isGlass
+                            ? GlassPalette.adjustedOpacity(0.30, transparency: glassTransparency, reduction: 0.35)
+                            : 0.15),
+                        lineWidth: 1
+                    )
+            )
     }
 
     private var header: some View {

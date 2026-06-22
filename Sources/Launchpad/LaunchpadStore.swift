@@ -26,6 +26,8 @@ final class LaunchpadStore: ObservableObject {
     @Published var freePages: [String: Int] = [:]
     /// User-placed widgets (free-positioned & resizable).
     @Published var widgets: [WidgetItem] = []
+    /// Per-app tile icon overrides keyed by app/custom id.
+    @Published var iconOverrides: [String: String] = [:]
     /// Last pointer location seen during a drag (page container space) — used to drop
     /// an item at an exact spot in free-placement mode.
     private var lastDragPoint: CGPoint = .zero
@@ -115,6 +117,7 @@ final class LaunchpadStore: ObservableObject {
         freePositions = persisted?.freePositions ?? [:]
         freePages = persisted?.freePages ?? [:]
         widgets = (persisted?.widgets ?? []).map { $0.normalized() }
+        iconOverrides = persisted?.iconOverrides ?? [:]
         reconcile(scanned: catalogueSorted(), persisted: persisted)
         sanitizeFreePlacement()
         clampPage()
@@ -348,7 +351,8 @@ final class LaunchpadStore: ObservableObject {
             hidden: Array(hidden),
             freePositions: freePositions,
             freePages: freePages,
-            widgets: widgets
+            widgets: widgets,
+            iconOverrides: iconOverrides
         )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
@@ -413,7 +417,8 @@ final class LaunchpadStore: ObservableObject {
                 hidden: Array(hidden),
                 freePositions: freePositions,
                 freePages: freePages,
-                widgets: widgets
+                widgets: widgets,
+                iconOverrides: iconOverrides
             ),
             settings: settings
         )
@@ -429,6 +434,7 @@ final class LaunchpadStore: ObservableObject {
         freePositions = bundle.layout.freePositions
         freePages = bundle.layout.freePages
         widgets = bundle.layout.widgets.map { $0.normalized() }
+        iconOverrides = bundle.layout.iconOverrides
         applyImportedLayout(bundle.layout)
         sanitizeFreePlacement()
         save()
@@ -717,6 +723,7 @@ final class LaunchpadStore: ObservableObject {
         guard isCustom(id) else { return }
         customById[id] = nil
         appsById[id] = nil
+        iconOverrides[id] = nil
         order.removeAll { $0 == id }
         // Pull it out of any folder; cleanupFolders dissolves any that fall below two.
         for fid in Array(folders.keys) where folders[fid]?.appIds.contains(id) == true {
@@ -778,6 +785,42 @@ final class LaunchpadStore: ObservableObject {
         guard var f = folders[folderId] else { return }
         f.colorHex = hex
         folders[folderId] = f
+        save()
+    }
+
+    // MARK: - App icon overrides
+
+    func icon(for app: AppInfo) -> NSImage {
+        if let path = iconOverrides[app.id],
+           let img = NSImage(contentsOfFile: (path as NSString).expandingTildeInPath) {
+            img.size = NSSize(width: 128, height: 128)
+            return img
+        }
+        return app.icon
+    }
+
+    func hasIconOverride(_ id: String) -> Bool {
+        iconOverrides[id] != nil
+    }
+
+    func chooseIconOverride(for id: String) {
+        guard isApp(id) else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var next = iconOverrides
+        next[id] = url.path
+        iconOverrides = next
+        save()
+    }
+
+    func clearIconOverride(for id: String) {
+        guard iconOverrides[id] != nil else { return }
+        var next = iconOverrides
+        next[id] = nil
+        iconOverrides = next
         save()
     }
 
@@ -983,15 +1026,27 @@ final class LaunchpadStore: ObservableObject {
 
     /// Wrap two top-level items into a new folder occupying `keepId`'s slot.
     /// `addId` may itself be a folder (dragging a folder onto an app → nesting).
-    func createFolder(keep keepId: String, add addId: String) {
-        guard keepId != addId else { return }
+    @discardableResult
+    func createFolder(keep keepId: String, add addId: String) -> String? {
+        guard keepId != addId else { return nil }
         let fid = "folder-" + UUID().uuidString
+        let retainedFreePosition = freePositions[keepId]
+        let retainedFreePage = freePages[keepId]
         folders[fid] = Folder(id: fid, name: defaultFolderName(), appIds: [keepId, addId])
         var o = order
         if let idx = o.firstIndex(of: keepId) { o[idx] = fid } else { o.append(fid) }
         o.removeAll { $0 == addId }
         order = o
+        freePositions[keepId] = nil
+        freePositions[addId] = nil
+        freePages[keepId] = nil
+        freePages[addId] = nil
+        if settings.freePlacement {
+            if let retainedFreePosition { freePositions[fid] = retainedFreePosition }
+            if let retainedFreePage { freePages[fid] = retainedFreePage }
+        }
         cleanupFolders(); save()
+        return fid
     }
 
     /// Move a top-level / nested item (app OR folder) into `folderId`. Rejects cycles
@@ -1001,6 +1056,8 @@ final class LaunchpadStore: ObservableObject {
         if isFolder(childId), folderContains(childId, folderId) { return }
         // Detach from wherever it currently lives (top-level or another folder).
         order.removeAll { $0 == childId }
+        freePositions[childId] = nil
+        freePages[childId] = nil
         for fid in Array(folders.keys) where fid != folderId {
             folders[fid]?.appIds.removeAll { $0 == childId }
         }
@@ -1211,14 +1268,17 @@ final class LaunchpadStore: ObservableObject {
         guard let dragging = draggingID else { return }
         lastDragPoint = point
 
-        // Free-placement mode: no reorder/merge preview — the item simply lands where
-        // it is dropped (handled in commitDrop). Edge zones still flip pages so an item
-        // can be carried to another (or a new) page.
+        // Free-placement mode: no reorder preview; hover still detects folder/app
+        // merge candidates using the actual rendered tile positions.
         if settings.freePlacement {
             let fe: CGFloat = 70
             if point.x < fe { flip(next: false) }
             else if point.x > containerSize.width - fe { flip(next: true) }
-            folderCandidateID = nil
+            folderCandidateID = freePlacementMergeCandidate(
+                dragging: dragging,
+                point: point,
+                containerSize: containerSize
+            )
             dragPreviewOrder = order
             return
         }
@@ -1259,15 +1319,7 @@ final class LaunchpadStore: ObservableObject {
                     point.y >= cellTop + innerMY && point.y <= cellTop + g.cellHeight - innerMY
                 // App → app (create folder) / app → folder (add) / folder → folder
                 // (nest). A folder dropped on a plain app just reorders.
-                let canMerge: Bool
-                if isApp(dragging) {
-                    canMerge = isApp(hoveredId) || isFolder(hoveredId)
-                } else if isFolder(dragging) {
-                    canMerge = isFolder(hoveredId) && !folderContains(dragging, hoveredId)
-                } else {
-                    canMerge = false
-                }
-                if inInner && canMerge {
+                if inInner && canMergeTopLevel(dragging: dragging, target: hoveredId) {
                     folderCandidateID = hoveredId
                     dragPreviewOrder = order
                     return
@@ -1288,14 +1340,57 @@ final class LaunchpadStore: ObservableObject {
         dragPreviewOrder = preview
     }
 
+    private func freePlacementMergeCandidate(
+        dragging: String,
+        point: CGPoint,
+        containerSize: CGSize
+    ) -> String? {
+        let g = geo
+        let pagesNow = freeModePages(order, geo: g)
+        let page = min(max(0, currentPage), max(0, pagesNow.count - 1))
+        let pageItems = pagesNow.indices.contains(page) ? pagesNow[page] : []
+        let hitHalfW = g.cellWidth * 0.275
+        let hitHalfH = g.cellHeight * 0.275
+
+        for (idx, target) in pageItems.enumerated() where target != dragging {
+            guard canMergeTopLevel(dragging: dragging, target: target) else { continue }
+            let center = tilePosition(for: target, index: idx, geo: g, area: containerSize)
+            let inInner =
+                abs(point.x - center.x) <= hitHalfW &&
+                abs(point.y - center.y) <= hitHalfH
+            if inInner { return target }
+        }
+        return nil
+    }
+
+    private func canMergeTopLevel(dragging: String, target: String) -> Bool {
+        if isApp(dragging) {
+            return isApp(target) || isFolder(target)
+        } else if isFolder(dragging) {
+            return isFolder(target) && !folderContains(dragging, target)
+        }
+        return false
+    }
+
     func commitDrop() {
         guard let dragging = draggingID else { endDragReset(); return }
 
         // Free placement: store the dropped position (normalized) + the page it landed
         // on (the user may have carried it to another / a new page mid-drag).
         if settings.freePlacement {
-            setFreePosition(dragging, point: lastDragPoint, container: areaSize)
-            freePages[dragging] = min(max(currentPage, 0), Self.maxFreePage)
+            if let target = folderCandidateID, target != dragging {
+                if isFolder(target) {
+                    addToFolder(child: dragging, folderId: target)
+                } else if isApp(target), isApp(dragging),
+                          let folderId = createFolder(keep: target, add: dragging) {
+                    setFreePosition(folderId, point: lastDragPoint, container: areaSize)
+                    freePages[folderId] = min(max(currentPage, 0), Self.maxFreePage)
+                    save()
+                }
+            } else {
+                setFreePosition(dragging, point: lastDragPoint, container: areaSize)
+                freePages[dragging] = min(max(currentPage, 0), Self.maxFreePage)
+            }
             endDragReset()
             clampPage()
             save()

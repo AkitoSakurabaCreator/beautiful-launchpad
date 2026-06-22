@@ -93,6 +93,9 @@ struct BackgroundView: View {
     /// Page currently shown (for per-page overrides). `nil` = use the global background
     /// (e.g. while searching or with a folder open).
     var pageIndex: Int? = nil
+    /// When true, AppKit owns video playback below the SwiftUI host. SwiftUI still
+    /// draws dim/page overrides, but it does not embed its own AVPlayerLayer.
+    var videoHandledExternally: Bool = false
 
     /// The per-page override for the current page, if any.
     private var pageOverride: PageBackground? {
@@ -163,7 +166,9 @@ struct BackgroundView: View {
                 Theming.gradient(settings.themeIndex).ignoresSafeArea()
             }
         case .video:
-            if let folder = settings.videoFolder {
+            if videoHandledExternally {
+                Color.clear.ignoresSafeArea()
+            } else if let folder = settings.videoFolder {
                 // Folder playlist (ordered / shuffled).
                 VideoFolderBackgroundView(folder: folder,
                                           random: settings.videoRandom,

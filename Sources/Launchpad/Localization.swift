@@ -35,7 +35,7 @@ enum L {
         case animation, animationsEnabled, animationSpeed, openAnimation
         case animZoom, animFade, animSlide, animNone
         case pageBackground, pageBgImage, pageBgClear
-        case layoutStyle, layoutClassic, layoutAndroid, layoutWindows, layoutCyber
+        case layoutStyle, layoutClassic, layoutGlass, layoutAndroid, layoutWindows, layoutCyber, glassTransparency
         case freePlacement, freePlacementNote, realign, kindRandomImage, randomImageHint
         case onboardingTitle, onboardingBody, openPrivacy, continueButton
         case chooseSound, clearSound, customSound, videoSound, newPage, volume
@@ -149,9 +149,11 @@ enum L {
         .pageBgClear:         ("背景をクリア", "Clear background"),
         .layoutStyle:         ("レイアウト", "Layout style"),
         .layoutClassic:       ("クラシック", "Classic"),
+        .layoutGlass:         ("ガラス", "Glass"),
         .layoutAndroid:       ("Android風", "Android"),
         .layoutWindows:       ("Windows風", "Windows"),
         .layoutCyber:         ("サイバー", "Cyber"),
+        .glassTransparency:   ("ガラス透明度", "Glass transparency"),
         .freePlacement:       ("アイコンを自由配置", "Free icon placement"),
         .freePlacementNote:   ("オンにするとアイコンを好きな位置に置けます。オフで従来の自動整列に戻ります。",
                                "When on, place icons anywhere. Turn off to auto-align like before."),

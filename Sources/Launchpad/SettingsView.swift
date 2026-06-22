@@ -6,10 +6,13 @@ struct SettingsView: View {
     @EnvironmentObject var store: LaunchpadStore
     @EnvironmentObject var updater: UpdaterController
     @State private var newPresetName = ""
+    private var isGlass: Bool { store.settings.layoutStyle == .glass }
+    private var glassTransparency: Double { store.settings.glassTransparency }
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Color.black.opacity(isGlass ? 0.30 : 0.5)
+                .opacity(isGlass ? GlassPalette.adjustedOpacity(1, transparency: glassTransparency, reduction: 0.55) : 1)
                 .ignoresSafeArea()
                 .onTapGesture { store.showSettings = false }
 
@@ -53,14 +56,7 @@ struct SettingsView: View {
                 }
                 .frame(width: 560)
                 .frame(maxHeight: max(320, proxy.size.height - 96))
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                        )
-                )
+                .background(settingsPanelBackground)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
             .foregroundColor(.white)
@@ -70,6 +66,34 @@ struct SettingsView: View {
 
     private var sectionDivider: some View {
         Divider().overlay(Color.white.opacity(0.2))
+    }
+
+    private var settingsPanelBackground: some View {
+        RoundedRectangle(cornerRadius: isGlass ? 30 : 24, style: .continuous)
+            .fill(isGlass ? Color.clear : Color.white.opacity(0.001))
+            .background {
+                if isGlass {
+                    LiquidGlassBackground(
+                        shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
+                        tint: GlassPalette.coolEdge,
+                        transparency: glassTransparency,
+                        strokeOpacity: 0.40,
+                        shadowOpacity: 0.24
+                    )
+                } else {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: isGlass ? 30 : 24, style: .continuous)
+                    .stroke(
+                        Color.white.opacity(isGlass
+                            ? GlassPalette.adjustedOpacity(0.30, transparency: glassTransparency, reduction: 0.35)
+                            : 0.15),
+                        lineWidth: 1
+                    )
+            )
     }
 
     // MARK: Sections
@@ -283,12 +307,24 @@ struct SettingsView: View {
             Text(store.t(.layoutStyle)).font(.headline)
             Picker(store.t(.layoutStyle), selection: bindingLayoutStyle) {
                 Text(store.t(.layoutClassic)).tag(LayoutStyle.classic)
+                Text(store.t(.layoutGlass)).tag(LayoutStyle.glass)
                 Text(store.t(.layoutAndroid)).tag(LayoutStyle.android)
                 Text(store.t(.layoutWindows)).tag(LayoutStyle.windows)
                 Text(store.t(.layoutCyber)).tag(LayoutStyle.cyber)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+
+            if store.settings.layoutStyle == .glass {
+                HStack {
+                    Text(store.t(.glassTransparency)).frame(width: 96, alignment: .leading)
+                    Slider(value: bindingGlassTransparency, in: 0...1)
+                    Text("\(Int(store.settings.glassTransparency * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 36)
+                }
+            }
         }
     }
 
@@ -421,7 +457,7 @@ struct SettingsView: View {
                 VStack(spacing: 6) {
                     ForEach(items) { item in
                         HStack(spacing: 10) {
-                            Image(nsImage: item.icon)
+                            Image(nsImage: store.icon(for: item))
                                 .resizable()
                                 .interpolation(.high)
                                 .frame(width: 26, height: 26)
@@ -538,6 +574,10 @@ struct SettingsView: View {
     private var bindingLayoutStyle: Binding<LayoutStyle> {
         Binding(get: { store.settings.layoutStyle },
                 set: { v in store.updateSettings { $0.layoutStyle = v } })
+    }
+    private var bindingGlassTransparency: Binding<Double> {
+        Binding(get: { store.settings.glassTransparency },
+                set: { v in store.updateSettings { $0.glassTransparency = v } })
     }
     private var bindingAutoUpdate: Binding<Bool> {
         Binding(get: { updater.automaticallyChecksForUpdates },

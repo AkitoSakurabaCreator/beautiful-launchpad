@@ -69,3 +69,72 @@ struct VisualEffectView: NSViewRepresentable {
         nsView.state = .active
     }
 }
+
+enum GlassPalette {
+    static let accent = Color(hex: "#D7F7FF")
+    static let sheen = Color(hex: "#FFFFFF")
+    static let coolEdge = Color(hex: "#90D7FF")
+    static let warmEdge = Color(hex: "#FFDDF7")
+
+    static func adjustedOpacity(_ base: Double, transparency: Double, reduction: Double = 0.65) -> Double {
+        let t = min(max(transparency, 0), 1)
+        return min(max(base * (1 - t * reduction), 0), 1)
+    }
+}
+
+struct LiquidGlassBackground<S: InsettableShape>: View {
+    let shape: S
+    var tint: Color = GlassPalette.accent
+    var transparency: Double = 0
+    var materialOpacity: Double = 1.0
+    var sheenOpacity: Double = 0.18
+    var tintOpacity: Double = 0.08
+    var warmOpacity: Double = 0.04
+    var innerStrokeOpacity: Double = 0.12
+    var strokeOpacity: Double = 0.34
+    var shadowOpacity: Double = 0.22
+
+    private func adjusted(_ base: Double, reduction: Double = 0.65) -> Double {
+        GlassPalette.adjustedOpacity(base, transparency: transparency, reduction: reduction)
+    }
+
+    var body: some View {
+        shape
+            .fill(.ultraThinMaterial)
+            .opacity(adjusted(materialOpacity))
+            .overlay(
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            GlassPalette.sheen.opacity(adjusted(sheenOpacity, reduction: 0.55)),
+                            tint.opacity(adjusted(tintOpacity, reduction: 0.55)),
+                            GlassPalette.warmEdge.opacity(adjusted(warmOpacity, reduction: 0.55)),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            )
+            .overlay(
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            GlassPalette.sheen.opacity(adjusted(strokeOpacity + 0.10, reduction: 0.30)),
+                            GlassPalette.coolEdge.opacity(adjusted(strokeOpacity, reduction: 0.30)),
+                            GlassPalette.warmEdge.opacity(adjusted(strokeOpacity * 0.65, reduction: 0.30)),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+            )
+            .overlay(
+                shape
+                    .strokeBorder(Color.white.opacity(adjusted(innerStrokeOpacity, reduction: 0.45)), lineWidth: 0.5)
+                    .blur(radius: 0.6)
+            )
+            .shadow(color: tint.opacity(adjusted(shadowOpacity, reduction: 0.45)), radius: 12, x: 0, y: 5)
+            .shadow(color: .black.opacity(adjusted(0.10, reduction: 0.35)), radius: 10, x: 0, y: 6)
+    }
+}

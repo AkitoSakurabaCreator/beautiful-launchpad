@@ -52,6 +52,8 @@ struct FolderOverlayView: View {
     private var sidePad: CGFloat { baseSidePad * fit }
     private var headerPad: CGFloat { baseHeaderPad * fit }
     private var bottomPad: CGFloat { baseBottomPad * fit }
+    private var isGlass: Bool { store.settings.layoutStyle == .glass }
+    private var glassTransparency: Double { store.settings.glassTransparency }
 
     private var gridW: CGFloat { CGFloat(cols) * cell + CGFloat(cols - 1) * hSpacing }
     private var gridH: CGFloat { CGFloat(rows) * cell + CGFloat(rows - 1) * vSpacing }
@@ -89,7 +91,7 @@ struct FolderOverlayView: View {
 
         return ZStack {
             // Backdrop: tap closes the overlay; dropping here pulls the item out.
-            Color.black.opacity(0.5)
+            Color.black.opacity(isGlass ? GlassPalette.adjustedOpacity(0.08, transparency: glassTransparency, reduction: 0.75) : 0.5)
                 .ignoresSafeArea()
                 .onTapGesture { store.closeAllFolders() }
                 .onDrop(of: [UTType.text], delegate: FolderMoveOutDropDelegate(store: store))
@@ -97,10 +99,34 @@ struct FolderOverlayView: View {
             // The folder card (fixed size).
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(isGlass ? Color.clear : Color.white.opacity(0.001))
+                    .background {
+                        if isGlass {
+                            LiquidGlassBackground(
+                                shape: RoundedRectangle(cornerRadius: 28, style: .continuous),
+                                tint: GlassPalette.coolEdge,
+                                transparency: glassTransparency,
+                                materialOpacity: 0.42,
+                                sheenOpacity: 0.10,
+                                tintOpacity: 0.035,
+                                warmOpacity: 0.018,
+                                innerStrokeOpacity: 0.06,
+                                strokeOpacity: 0.18,
+                                shadowOpacity: 0.05
+                            )
+                        } else {
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        }
+                    }
                     .overlay(
                         RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            .stroke(
+                                Color.white.opacity(isGlass
+                                    ? GlassPalette.adjustedOpacity(0.10, transparency: glassTransparency, reduction: 0.35)
+                                    : 0.15),
+                                lineWidth: 1
+                            )
                     )
                     .frame(width: cardW, height: cardH)
 
@@ -147,7 +173,21 @@ struct FolderOverlayView: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(8)
-                            .background(Circle().fill(Color.black.opacity(0.28)))
+                            .background {
+                                if isGlass {
+                                    LiquidGlassBackground(shape: Circle(), tint: GlassPalette.coolEdge,
+                                                          transparency: glassTransparency,
+                                                          materialOpacity: 0.35,
+                                                          sheenOpacity: 0.09,
+                                                          tintOpacity: 0.03,
+                                                          warmOpacity: 0.015,
+                                                          innerStrokeOpacity: 0.05,
+                                                          strokeOpacity: 0.18,
+                                                          shadowOpacity: 0.04)
+                                } else {
+                                    Circle().fill(Color.black.opacity(0.28))
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                     .help(store.t(.back))
@@ -218,6 +258,10 @@ struct FolderOverlayView: View {
             }
             .contextMenu {
                 Button(store.t(.hide)) { store.hide(id) }
+                Button(store.t(.chooseIcon)) { store.chooseIconOverride(for: id) }
+                if store.hasIconOverride(id) {
+                    Button(store.t(.clearIcon)) { store.clearIconOverride(for: id) }
+                }
                 if store.isCustom(id) {
                     Button(store.t(.deleteItem), role: .destructive) { store.removeCustomItem(id) }
                 }
