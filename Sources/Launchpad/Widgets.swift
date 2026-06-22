@@ -497,8 +497,10 @@ struct WidgetTileView: View {
             .frame(width: 18, height: 18)
             .background(Circle().fill(Color.black.opacity(0.55)))
             .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            .offset(y: -14)
-            .opacity(hovering ? 1 : 0.4)
+            // Keep it INSIDE the tile's frame (top edge). Offsetting it outside the
+            // frame renders it but makes it un-hittable (SwiftUI hit-tests within bounds).
+            .offset(y: 2)
+            .opacity(hovering ? 1 : 0.5)
             .contentShape(Circle())
             .gesture(
                 DragGesture(coordinateSpace: .named(WidgetLayer.coordinateSpace))
