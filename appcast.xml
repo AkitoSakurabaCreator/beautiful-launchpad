@@ -3,13 +3,13 @@
     <channel>
         <title>Beautiful Launchpad</title>
         <item>
-            <title>1.5.0</title>
-            <pubDate>Mon, 22 Jun 2026 07:29:36 +0000</pubDate>
-            <sparkle:version>7</sparkle:version>
-            <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
+            <title>1.6.0</title>
+            <pubDate>Mon, 22 Jun 2026 09:42:54 +0000</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/AkitoSakurabaCreator/beautiful-launchpad/releases/download/v1.5.0/BeautifulLaunchpad.zip" length="3647580" type="application/octet-stream" sparkle:edSignature="kkxIXqCCjpQJRqWctS1WCMTu+RbFAA7c2cW9JO0D9OofizVkUvB9Tn0j/J993zboMZbmoadfixT32p2iiKfmAw=="/>
+            <enclosure url="https://github.com/AkitoSakurabaCreator/beautiful-launchpad/releases/download/v1.6.0/BeautifulLaunchpad.zip" length="3724157" type="application/octet-stream" sparkle:edSignature="r9z1duUfjB1hTQCbtzlvn3UamTfuRmgE/Xzu2jkNt+gVlEwidNLlrwEbElJSOgAOOo3NIekb82A+1xsI2ohuDQ=="/>
         </item>
     </channel>
 </rss>
