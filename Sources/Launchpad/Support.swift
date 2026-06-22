@@ -107,6 +107,11 @@ struct LiquidGlassBackground<S: InsettableShape>: View {
     var innerStrokeOpacity: Double = 0.12
     var strokeOpacity: Double = 0.34
     var shadowOpacity: Double = 0.22
+    // Liquid-Glass specular lighting (generic; works on macOS 13+, no OS-26-only API).
+    // All static gradients, so they add no live-blur / video-compositing cost.
+    var highlightOpacity: Double = 0.46   // top sheen — light catching the upper edge
+    var specularOpacity: Double = 0.22    // diagonal glossy reflection streak ("光の反射")
+    var depthOpacity: Double = 0.12       // bottom inner shadow — perceived glass thickness
 
     private func adjusted(_ base: Double, reduction: Double = 0.65) -> Double {
         GlassPalette.adjustedOpacity(
@@ -130,6 +135,43 @@ struct LiquidGlassBackground<S: InsettableShape>: View {
                     endPoint: .bottomTrailing
                 )
             )
+            // Bottom inner shadow — gives the glass a sense of thickness/depth so it
+            // reads as a lens rather than a flat translucent panel.
+            shape.fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.58),
+                        .init(color: .black.opacity(adjusted(depthOpacity, reduction: 0.5)), location: 1.0),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            // Top specular sheen — light catching the upper edge of the glass.
+            shape.fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(adjusted(highlightOpacity, reduction: 0.45)), location: 0.0),
+                        .init(color: .white.opacity(adjusted(highlightOpacity * 0.20, reduction: 0.45)), location: 0.16),
+                        .init(color: .clear, location: 0.46),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            .blendMode(.plusLighter)
+            // Diagonal glossy reflection streak — the "light reflection" highlight that
+            // makes the surface read as polished glass.
+            shape.fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.30),
+                        .init(color: .white.opacity(adjusted(specularOpacity, reduction: 0.5)), location: 0.45),
+                        .init(color: .white.opacity(adjusted(specularOpacity * 0.5, reduction: 0.5)), location: 0.51),
+                        .init(color: .clear, location: 0.66),
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            )
+            .blendMode(.plusLighter)
             shape.strokeBorder(
                 LinearGradient(
                     colors: [

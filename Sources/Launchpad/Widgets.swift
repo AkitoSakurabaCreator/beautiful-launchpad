@@ -64,7 +64,95 @@ struct WidgetContentView: View {
         case .weather: WeatherWidgetView(widget: widget, accent: accent)
         case .image:   ImageWidgetView(path: widget.text)
         case .video:   VideoWidgetView(path: widget.text, muted: widget.muted, volume: widget.volume)
+        case .custom:
+            if let def = store.widgetDefinition(for: widget), let node = def.layout {
+                DeclarativeWidgetView(node: node, accent: def.accent.isEmpty ? accent : Color(hex: def.accent))
+            } else {
+                // Unknown / deleted definition: keep the tile, don't lose data.
+                MissingWidgetView(label: store.t(.widgetMissing))
+            }
         }
+    }
+}
+
+/// Renders a declarative widget's layout tree (Phase 1: static text / SF Symbols /
+/// local images). `AnyView` is used to break the recursive opaque-return type;
+/// trees are tiny so the erasure cost is irrelevant.
+struct DeclarativeWidgetView: View {
+    let node: WidgetNode
+    var accent: Color = .white
+
+    var body: some View {
+        nodeView(node)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(6)
+    }
+
+    private func nodeView(_ n: WidgetNode) -> AnyView {
+        switch n.type {
+        case .vstack:
+            return AnyView(VStack(spacing: 6) {
+                ForEach(Array(n.children.enumerated()), id: \.offset) { _, c in nodeView(c) }
+            })
+        case .hstack:
+            return AnyView(HStack(spacing: 6) {
+                ForEach(Array(n.children.enumerated()), id: \.offset) { _, c in nodeView(c) }
+            })
+        case .text:
+            return AnyView(
+                Text(n.value)
+                    .font(.system(size: n.size > 0 ? n.size : 16, weight: fontWeight(n.weight)))
+                    .foregroundColor(tint(n))
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(4)
+            )
+        case .symbol:
+            return AnyView(
+                Image(systemName: n.value.isEmpty ? "questionmark" : n.value)
+                    .font(.system(size: n.size > 0 ? n.size : 24))
+                    .foregroundColor(tint(n))
+            )
+        case .image:
+            let p = (n.value as NSString).expandingTildeInPath
+            if !p.isEmpty, let img = NSImage(contentsOfFile: p) {
+                return AnyView(
+                    Image(nsImage: img).resizable().interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                )
+            } else {
+                return AnyView(placeholder(symbol: "photo"))
+            }
+        case .spacer:
+            return AnyView(Spacer(minLength: 0))
+        }
+    }
+
+    private func tint(_ n: WidgetNode) -> Color { n.color.isEmpty ? accent : Color(hex: n.color) }
+
+    private func fontWeight(_ s: String) -> Font.Weight {
+        switch s {
+        case "bold": return .bold
+        case "semibold": return .semibold
+        case "medium": return .medium
+        case "light": return .light
+        default: return .regular
+        }
+    }
+}
+
+/// Shown when a custom widget's definition is missing (deleted, or imported on a
+/// machine that lacks it). Keeps the placed tile rather than dropping it silently.
+struct MissingWidgetView: View {
+    var label: String = "Unknown widget"
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "questionmark.square.dashed")
+                .font(.system(size: 22)).foregroundColor(.white.opacity(0.55))
+            Text(label).font(.caption2).foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -455,6 +543,9 @@ struct WidgetTileView: View {
     @ViewBuilder private var menuItems: some View {
         if widget.kind == .image || widget.kind == .video {
             Button(store.t(.chooseFile)) { store.chooseWidgetMedia(widget.id) }
+        }
+        if widget.kind == .custom, let defId = widget.definitionId, store.widgetDefinition(defId) != nil {
+            Button(store.t(.widgetEdit)) { store.beginEditWidgetDefinition(defId) }
         }
         if widget.kind == .video {
             Button(widget.muted ? store.t(.videoSound) : store.t(.mute)) {

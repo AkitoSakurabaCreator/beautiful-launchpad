@@ -43,6 +43,7 @@ enum WidgetKind: String, Codable, CaseIterable {
     case weather   // current conditions (network)
     case image     // user-picked still image (`text` = file path)
     case video     // user-picked looping video (`text` = file path)
+    case custom    // user-/third-party-defined declarative widget (renders via WidgetDefinition)
 }
 
 /// A user-placed widget. Position/size are normalized (0…1) within the page area so
@@ -68,6 +69,8 @@ struct WidgetItem: Identifiable, Codable, Hashable {
     var rotation: Double = 0
     /// When locked: no hover UI, no drag/resize. Unlock via right-click menu.
     var locked: Bool = false
+    /// For `kind == .custom`: which `WidgetDefinition` (by id) renders this tile.
+    var definitionId: String? = nil
 
     /// Clamp every field into a safe range (defends against hand-edited files).
     func normalized() -> WidgetItem {
@@ -84,7 +87,7 @@ struct WidgetItem: Identifiable, Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, page, x, y, w, h, text, transparent, muted, volume, opacity, rotation, locked
+        case id, kind, page, x, y, w, h, text, transparent, muted, volume, opacity, rotation, locked, definitionId
     }
 }
 
@@ -107,6 +110,79 @@ extension WidgetItem {
         opacity = (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0
         rotation = (try? c.decode(Double.self, forKey: .rotation)) ?? 0
         locked = (try? c.decode(Bool.self, forKey: .locked)) ?? false
+        definitionId = (try? c.decode(String.self, forKey: .definitionId))
+    }
+}
+
+/// A node in a declarative widget's layout tree. Phase 1 supports static text /
+/// SF Symbols / local image files plus vertical/horizontal stacks. The tree is
+/// pure data (no code execution), so definitions are safe to share/import.
+struct WidgetNode: Codable, Hashable {
+    enum NodeType: String, Codable { case vstack, hstack, text, symbol, image, spacer }
+    var type: NodeType
+    /// text → the string · symbol → SF Symbol name · image → file path. Unused for stacks/spacer.
+    var value: String = ""
+    /// Font/symbol point size (0 = sensible default).
+    var size: Double = 0
+    /// "bold" / "semibold" / "regular" (text only; empty = regular).
+    var weight: String = ""
+    /// Hex colour like "#RRGGBB" ("" = inherit the widget accent).
+    var color: String = ""
+    var children: [WidgetNode] = []
+
+    init(type: NodeType, value: String = "", size: Double = 0, weight: String = "",
+         color: String = "", children: [WidgetNode] = []) {
+        self.type = type; self.value = value; self.size = size
+        self.weight = weight; self.color = color; self.children = children
+    }
+
+    enum CodingKeys: String, CodingKey { case type, value, size, weight, color, children }
+
+    // Decode-tolerant: a node missing newer fields still loads with safe defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = (try? c.decode(NodeType.self, forKey: .type)) ?? .text
+        value = (try? c.decode(String.self, forKey: .value)) ?? ""
+        size = (try? c.decode(Double.self, forKey: .size)) ?? 0
+        weight = (try? c.decode(String.self, forKey: .weight)) ?? ""
+        color = (try? c.decode(String.self, forKey: .color)) ?? ""
+        children = (try? c.decode([WidgetNode].self, forKey: .children)) ?? []
+    }
+}
+
+/// A reusable widget "type". Built-ins render natively (via `WidgetKind`); user-/
+/// third-party-defined widgets carry a declarative `layout` tree and are persisted
+/// in the layout so they survive relaunch and travel with export/import.
+/// `id` is `"wdef-<uuid>"`.
+struct WidgetDefinition: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    /// SF Symbol shown next to this widget in the "Add widget" menu.
+    var menuSymbol: String = "square.dashed"
+    /// Reserved for seeding native widgets as catalogue entries; nil for declarative ones.
+    var builtin: WidgetKind? = nil
+    /// Declarative layout tree (used when `builtin == nil`).
+    var layout: WidgetNode? = nil
+    /// Accent hex for the declarative content ("" = theme default).
+    var accent: String = ""
+
+    init(id: String, name: String, menuSymbol: String = "square.dashed",
+         builtin: WidgetKind? = nil, layout: WidgetNode? = nil, accent: String = "") {
+        self.id = id; self.name = name; self.menuSymbol = menuSymbol
+        self.builtin = builtin; self.layout = layout; self.accent = accent
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, menuSymbol, builtin, layout, accent }
+
+    // Decode-tolerant: tolerate older/partial files (one bad definition must not wipe all).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = (try? c.decode(String.self, forKey: .name)) ?? "Widget"
+        menuSymbol = (try? c.decode(String.self, forKey: .menuSymbol)) ?? "square.dashed"
+        builtin = (try? c.decode(WidgetKind.self, forKey: .builtin))
+        layout = (try? c.decode(WidgetNode.self, forKey: .layout))
+        accent = (try? c.decode(String.self, forKey: .accent)) ?? ""
     }
 }
 
@@ -139,10 +215,13 @@ struct PersistedLayout: Codable {
     var widgets: [WidgetItem]
     /// Per-app tile icon overrides keyed by app/custom id.
     var iconOverrides: [String: String]
+    /// User-/third-party-defined declarative widget types, referenced by `WidgetItem.definitionId`.
+    var widgetDefinitions: [WidgetDefinition]
 
     init(order: [String], folders: [Folder], customItems: [CustomItem] = [],
          hidden: [String] = [], freePositions: [String: CGPoint] = [:], freePages: [String: Int] = [:],
-         widgets: [WidgetItem] = [], iconOverrides: [String: String] = [:]) {
+         widgets: [WidgetItem] = [], iconOverrides: [String: String] = [:],
+         widgetDefinitions: [WidgetDefinition] = []) {
         self.order = order
         self.folders = folders
         self.customItems = customItems
@@ -151,10 +230,11 @@ struct PersistedLayout: Codable {
         self.freePages = freePages
         self.widgets = widgets
         self.iconOverrides = iconOverrides
+        self.widgetDefinitions = widgetDefinitions
     }
 
     enum CodingKeys: String, CodingKey {
-        case order, folders, customItems, hidden, freePositions, freePages, widgets, iconOverrides
+        case order, folders, customItems, hidden, freePositions, freePages, widgets, iconOverrides, widgetDefinitions
     }
 
     // Tolerate older files that predate newer fields (and partial/hand-edited JSON):
@@ -169,6 +249,7 @@ struct PersistedLayout: Codable {
         freePages = (try? c.decode([String: Int].self, forKey: .freePages)) ?? [:]
         widgets = (try? c.decode([WidgetItem].self, forKey: .widgets)) ?? []
         iconOverrides = (try? c.decode([String: String].self, forKey: .iconOverrides)) ?? [:]
+        widgetDefinitions = (try? c.decode([WidgetDefinition].self, forKey: .widgetDefinitions)) ?? []
     }
 }
 
@@ -202,10 +283,14 @@ enum LayoutStyle: String, Codable, CaseIterable {
 
 /// A per-page background override (used when the user customises individual pages).
 struct PageBackground: Codable, Hashable {
-    enum Kind: String, Codable { case color, image }
+    enum Kind: String, Codable { case color, image, video, slideshow }
     var kind: Kind
     var colorHex: String?
     var imagePath: String?
+    /// Per-page looping video file (used when `kind == .video`).
+    var videoPath: String? = nil
+    /// Per-page image slideshow folder (used when `kind == .slideshow`).
+    var slideshowFolder: String? = nil
 }
 
 /// User-customisable appearance settings.

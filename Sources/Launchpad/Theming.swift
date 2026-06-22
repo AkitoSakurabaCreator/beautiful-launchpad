@@ -125,6 +125,31 @@ struct BackgroundView: View {
             } else {
                 globalBackground
             }
+        case .video:
+            // Per-page video is always hosted inside SwiftUI (it follows the paged
+            // grid). The external AppKit video window only backs the *global* video
+            // background; here the page override draws above it. Mute/volume reuse
+            // the global video settings for simplicity.
+            if let path = pb.videoPath, FileManager.default.fileExists(atPath: path) {
+                VideoBackgroundView(paths: [path],
+                                    muted: settings.videoMuted,
+                                    volume: settings.videoVolume)
+                    .id("pagevideo:\(path)")
+                    .ignoresSafeArea()
+            } else {
+                globalBackground
+            }
+        case .slideshow:
+            if let folder = pb.slideshowFolder {
+                SlideshowBackgroundView(folder: folder,
+                                        interval: settings.slideshowInterval,
+                                        random: settings.slideshowRandom,
+                                        animated: settings.animationsEnabled)
+                    .id("pageslideshow:\(folder)")
+                    .ignoresSafeArea()
+            } else {
+                globalBackground
+            }
         }
     }
 
