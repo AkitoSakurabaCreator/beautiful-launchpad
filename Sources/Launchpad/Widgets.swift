@@ -362,22 +362,28 @@ struct WidgetTileView: View {
         let cy = widget.y * areaSize.height + dragOffset.height
         let locked = widget.locked
 
-        card(w, h)
-            // Rotation handle rotates WITH the card (orbits to the top); applied before
-            // rotationEffect. The other controls are applied AFTER rotationEffect so they
-            // stay upright/stationary (rotating them under the cursor caused the jitter).
-            .overlay(alignment: .top) { if !locked { rotationHandle } }
-            .rotationEffect(.degrees(widget.rotation))
-            .overlay(alignment: .bottomTrailing) { if !locked { resizeHandle } }
-            .overlay(alignment: .bottom) { if hovering && !locked && isMedia { controlBar } }
-            .onHover { hovering = $0 }
-            .contextMenu { menuItems }
-        // `.position` MUST be last: any interaction modifier applied *after* it (e.g.
-        // .onHover) attaches to the parent-filling container and would swallow clicks
-        // across the whole page, blocking the icons beneath. Keeping interactions on
-        // the sized card means only the w×h tile is hit-testable; empty space passes
-        // clicks through to the grid (matches how app icons are positioned).
-        .position(x: cx, y: cy)
+        let handleZone: CGFloat = 26   // reserved space ABOVE the card for the handle
+
+        // The handle lives in a zone ABOVE the card but still WITHIN the tile frame, so
+        // it protrudes outside the card yet stays hit-testable (offsetting it outside the
+        // frame rendered it but made it un-grabbable). The card rotates in place; the
+        // handle stays upright above it (computing rotation from the absolute cursor
+        // angle, so it never jitters).
+        VStack(spacing: 0) {
+            rotationHandleView(zone: handleZone)
+                .opacity(locked ? 0 : 1)
+                .allowsHitTesting(!locked)
+            card(w, h)
+                .rotationEffect(.degrees(widget.rotation))
+                .overlay(alignment: .bottomTrailing) { if !locked { resizeHandle } }
+                .overlay(alignment: .bottom) { if hovering && !locked && isMedia { controlBar } }
+        }
+        .frame(width: w, height: h + handleZone)
+        .onHover { hovering = $0 }
+        .contextMenu { menuItems }
+        // Frame includes the top handle zone; shift up so the CARD centre (not the
+        // frame centre) sits at the widget's stored position.
+        .position(x: cx, y: cy - handleZone / 2)
     }
 
     /// The visible card: title bar + content + frame/background/border/shadow.
@@ -418,6 +424,7 @@ struct WidgetTileView: View {
                 LiquidGlassBackground(
                     shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
                     tint: GlassPalette.coolEdge,
+                    transparency: store.settings.glassTransparency,
                     strokeOpacity: 0.34,
                     shadowOpacity: 0.12
                 )
@@ -490,18 +497,17 @@ struct WidgetTileView: View {
     /// Grab-to-rotate knob near the top of the widget. Rotation is computed from the
     /// angle of the cursor around the widget centre (absolute, not incremental), so it
     /// tracks the pointer smoothly instead of jittering.
-    private var rotationHandle: some View {
+    private func rotationHandleView(zone: CGFloat) -> some View {
         Image(systemName: "arrow.clockwise")
-            .font(.system(size: 10, weight: .bold))
+            .font(.system(size: 11, weight: .bold))
             .foregroundColor(.white)
-            .frame(width: 22, height: 22)
-            .background(Circle().fill(Color.black.opacity(0.55)))
-            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-            .opacity(hovering ? 1 : 0.5)
-            // Visible knob stays small, but the grab area is a wider transparent zone
-            // (extending DOWN into the tile — up would be outside the frame & un-hittable).
-            .frame(width: 56, height: 44, alignment: .top)
-            .offset(y: 2)
+            .frame(width: 24, height: 24)
+            .background(Circle().fill(Color.black.opacity(0.6)))
+            .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1))
+            .opacity(hovering ? 1 : 0.45)
+            // Small visible knob, but a wide transparent grab zone filling the handle
+            // area above the card (it's inside the tile frame, so it stays hit-testable).
+            .frame(width: 80, height: zone, alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(coordinateSpace: .named(WidgetLayer.coordinateSpace))
@@ -572,6 +578,7 @@ struct WidgetTileView: View {
             if glass {
                 LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous),
                                       tint: GlassPalette.coolEdge,
+                                      transparency: store.settings.glassTransparency,
                                       strokeOpacity: 0.34,
                                       shadowOpacity: 0.10)
             } else {
