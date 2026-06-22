@@ -34,13 +34,16 @@ on click.
 - 🎨 **Appearance customization** — background (desktop blur / theme / image / **slideshow** / **video** / solid color), blur strength, columns & rows, folder columns & rows, dimming, icon-label toggle
 - 🖼 **Slideshow background** — cross-fade through the images in a folder, sequentially or shuffled (interval 3–300s)
 - 🎬 **Video background** — loop a single video seamlessly, or play a folder of videos as a playlist (sequential or shuffled); mute toggle and volume control included
-- 🧱 **Layout style** — switch the icon & folder look between Classic / Android / Windows / **Cyber** (neon glow)
+- 🧱 **Layout style** — switch the icon & folder look between Classic / **Glass** (liquid glass) / Android / Windows / **Cyber** (neon glow)
+- 🎛 **Design presets** — save the whole look (background, theme, layout, animation…) by name and switch with one click (your app arrangement, folders, and widgets stay unchanged)
 - 📌 **Free icon placement** — place icons anywhere instead of on the grid (use "Re-align" to snap back anytime)
-- 🌄 **Per-page background** — right-click a page's empty space to give that page its own image or preset color
-- 📟 **Widgets** — place **clock / date / notes / battery / system info / weather / image / video** widgets on a page; drag to move, drag the corner to resize, and use "Hide window" to drop the card chrome and blend into the background (weather uses Open-Meteo — no API key, auto-located by IP)
+- 🌄 **Per-page background** — right-click a page's empty space to give that page its own image / **video** / **slideshow** / preset color
+- 📟 **Widgets** — place **clock / date / notes / battery / system info / weather / image / video** widgets on a page; drag to move, drag the corner to resize, plus **rotate / opacity / lock**, and use "Hide window" to drop the card chrome and blend into the background (weather uses Open-Meteo — no API key, auto-located by IP)
+- 🛠 **Custom widgets** — build your own widget from a name, SF Symbol, headline, subtitle, image, and accent color. It's pure data (no code runs), so it's safe to share and migrate to another Mac
 - 🔊 **App launch sound** — play one of 8 system sounds (Pop / Tink / Glass / Hero / Submarine / Ping / Funk / Morse) or a custom sound file when launching
 - 👋 **First-run onboarding** — a welcome screen on first launch that guides you to Privacy settings so images from protected folders (Desktop/Documents) can be used as backgrounds
 - 🧩 **User-defined items** — manually add **apps / scripts & shell commands / URLs / random image (folder)** (with an optional custom icon). Add them by right-clicking the background or an icon → "Add Item"
+- 🖌 **Per-item icon override** — right-click an app or custom item → "Choose Icon…" to replace its tile icon with any image ("Clear icon" restores the default)
 - 🖱 **Right-click menu** — edit/delete your custom items, **reveal an app in Finder**, **hide an item**, or add one on the spot
 - 🙈 **Hide / show items** — right-click → "**Hide**" to take an app or custom item out of the grid and search
   (it won't reappear after a rescan); restore it anytime from the **"Hidden Items"** section in Settings via "Show" / "Show All"
@@ -118,7 +121,7 @@ swift build        # compile only
 | Drag an item **to the left/right edge** inside a folder | Flip the folder page |
 | Drag an item **outside the card (dark backdrop)** from inside a folder | Move it out, up one level (the "−" button also works) |
 | Tap a sub-folder / **‹ back** | Drill into it / go up one level |
-| **Right-click** an icon / folder / the background | Context menu (add an item, **add a widget**, edit/delete, reveal in Finder, **hide an item**, set **this page's background**, etc.) |
+| **Right-click** an icon / folder / the background | Context menu (add an item, **add a widget** (incl. create custom), **change the icon**, edit/delete, reveal in Finder, **hide an item**, set **this page's background**, etc.) |
 | Drag a widget's **title bar or body** / its bottom-right corner handle | Move / resize the widget (Notes is moved by its title bar — its body is for editing) |
 | **Right-click** a widget | Choose media (image/video), toggle mute (video), **show/hide window**, **lock/unlock**, delete |
 | Hover over a widget | Shows sliders at the bottom: **rotation** (all), **opacity** (image/video), **volume/mute** (video) |
@@ -141,7 +144,8 @@ Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
   - **Video**: pick a single video or a folder (shuffle available for a folder). Turn on "Play video audio" to hear sound and adjust the volume
 - **Dimming**: opacity of the dark overlay on top of the background
 - **Layout**: columns (4–10) and rows (3–8), plus folder columns (3–8) and rows (2–6)
-- **Layout style**: Classic / Android / Windows / Cyber (neon glow)
+- **Layout style**: Classic / Glass (liquid glass) / Android / Windows / Cyber (neon glow). When "Glass" is selected, a **Glass transparency** slider tunes how clear it looks
+- **Presets**: save the current look by name, then **Apply** (one-click switch), **Update** (overwrite with current), rename, or delete (appearance only)
 - **Icon labels**: toggle labels ON/OFF
 - **Animation**: enable/disable, open/close effect (zoom / fade / slide / none), and speed (0.5–2.0×)
 - **Free icon placement**: turn on to place icons anywhere; turn off to auto-align like before ("Re-align" snaps everything back)
@@ -153,20 +157,28 @@ Open the customization screen with the ⚙️ button (top-right) or **⌘,**.
 
 - **Add an item**: **right-click the background or an icon → "Add Item…"** to register an app, a script/shell command, a URL, or a **random image (folder)** (a custom icon can be set too). Scripts & commands run through a shell (must be executable). "Random image (folder)" opens a random picture from the chosen folder each time you click it.
 - **Folder color**: pick a tint from the color swatches in the open-folder view. The leading "−" swatch resets it to the default (no tint).
+- **Icon override**: **right-click an app or custom item → "Choose Icon…"** to replace its tile icon with any image (**"Clear icon"** restores the original).
 
 ### Per-page background
 
-- **Right-click a page's empty space → "This page's background"** to give that single page its own image or preset color. Use "Clear background" to revert to the shared background.
+- **Right-click a page's empty space → "This page's background"** to give that single page its own **image / video / slideshow / preset color**. Use "Clear background" to revert to the shared background.
 
 ### Widgets
 
 - **Add**: **right-click a page's empty space → "Add Widget"** to place a clock, date, notes, battery, system, weather, image, or video widget.
+- **Create a custom widget**: "Add Widget → 'Create custom…'" opens a builder where you set a name, SF Symbol, headline, subtitle, image, and accent color to make your own widget. It then appears in the Add Widget menu, and you can edit/delete it later via right-click → "Edit widget…". Definitions are pure data (no code runs), saved in `layout.json`, and travel with export/import.
 - **Move / resize**: drag the title bar (the handle at the top) or the **widget body** to move; drag the bottom-right corner handle to resize (Notes is moved via its title bar, since its body is for editing). Position and size are stored normalized, so they survive window/display size changes.
 - **Hover controls (sliders)**: hover over a widget to reveal sliders at the bottom for **rotation** (all widgets, −180…180°), **opacity** (image/video), and **volume & mute** (video).
 - **Right-click a widget**: re-pick the media for image/video widgets, toggle mute for video, **"Hide/Show window"** to drop the card background/border (so transparent PNGs and overlay videos blend in), or **"Lock/Unlock"** to prevent accidental changes (a locked widget can't be moved, resized, or hovered). Delete is here too.
 - **Weather**: uses Open-Meteo (no API key) and auto-locates by IP (no Location permission), refreshing every 15 minutes. Shows "—" when offline.
 - **Notes**: editable in place; the text is saved in `layout.json`.
 - Widgets are hidden while searching, and their layout is persisted in `layout.json`.
+
+### Design presets
+
+- In the customization screen's **"Presets"** section, save the current **appearance** (background, theme, layout, layout style, animation, etc.) under a name.
+- Each saved preset can be switched in one click with **"Apply"**, overwritten with the current settings via **"Update"**, and renamed or deleted.
+- Presets cover the **appearance only** — your app arrangement, folders, and widgets are left unchanged.
 
 ### Hiding / restoring items
 
@@ -200,10 +212,10 @@ LaunchPad/
 ├── build-app.sh                  # build + .app packaging + ad-hoc signing
 └── Sources/Launchpad/
     ├── LaunchpadApp.swift        # @main / AppDelegate / full-screen window / key & scroll monitoring
-    ├── Support.swift             # GridGeometry / VisualEffectView / chunk
-    ├── Models.swift              # AppInfo / Folder / CustomItem / WidgetItem / enums / persistence & settings models (order, folders, hidden, free placement, per-page backgrounds, widgets, all AppSettings)
+    ├── Support.swift             # GridGeometry / VisualEffectView / chunk / LiquidGlassBackground (glass rendering)
+    ├── Models.swift              # AppInfo / Folder / CustomItem / WidgetItem / WidgetDefinition & WidgetNode (declarative widgets) / enums / persistence & settings models (order, folders, hidden, free placement, per-page backgrounds, widgets, icon overrides, all AppSettings)
     ├── AppScanner.swift          # installed-app scanning + icon retrieval
-    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / free placement / per-page backgrounds / widgets / launch sound / persistence
+    ├── LaunchpadStore.swift      # state / paging / search / D&D / folders (nesting) / hide / free placement / per-page backgrounds / widgets / custom widget definitions / design presets / icon overrides / launch sound / persistence
     ├── LaunchpadView.swift       # root / pager / grid / search / dots / right-click menu
     ├── IconViews.swift           # app/folder tile rendering (folder mini-preview)
     ├── FolderViews.swift         # folder overlay (nesting, pagination, color)

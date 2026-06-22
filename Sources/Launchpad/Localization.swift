@@ -34,7 +34,7 @@ enum L {
         case bgSlideshow, bgVideo, chooseFolder, chooseVideo, slideshowInterval, slideshowRandom
         case animation, animationsEnabled, animationSpeed, openAnimation
         case animZoom, animFade, animSlide, animNone
-        case pageBackground, pageBgImage, pageBgClear
+        case pageBackground, pageBgImage, pageBgVideo, pageBgSlideshow, pageBgClear
         case layoutStyle, layoutClassic, layoutGlass, layoutAndroid, layoutWindows, layoutCyber, glassTransparency
         case freePlacement, freePlacementNote, realign, kindRandomImage, randomImageHint
         case onboardingTitle, onboardingBody, openPrivacy, continueButton
@@ -42,6 +42,9 @@ enum L {
         case addWidget, widgetClock, widgetDate, widgetNotes, widgetBattery, widgetSystem, widgetWeather
         case widgetImage, widgetVideo, widgetTransparent, widgetShowWindow, mute, lock, unlock
         case presets, presetName, savePreset, apply, presetUpdate, presetsNote
+        case widgetCreate, widgetEdit, widgetMissing
+        case builderTitle, builderName, builderSymbol, builderSymbolHint
+        case builderHeadline, builderSubtitle, builderAccent, builderAccentDefault, builderImage
     }
 
     /// Resolve the concrete language from the user's choice and the OS locale.
@@ -146,6 +149,8 @@ enum L {
         .animNone:            ("なし", "None"),
         .pageBackground:      ("このページの背景", "This page's background"),
         .pageBgImage:         ("画像を設定…", "Set image…"),
+        .pageBgVideo:         ("動画を設定…", "Set video…"),
+        .pageBgSlideshow:     ("スライドショーを設定…", "Set slideshow…"),
         .pageBgClear:         ("背景をクリア", "Clear background"),
         .layoutStyle:         ("レイアウト", "Layout style"),
         .layoutClassic:       ("クラシック", "Classic"),
@@ -193,5 +198,18 @@ enum L {
         .presetUpdate:        ("更新", "Update"),
         .presetsNote:         ("デザイン（背景・テーマ・レイアウト・アニメ等の外観）を名前を付けて保存し、ワンクリックで切り替えできます。アプリの配置やフォルダ・ウィジェットは変わりません。",
                                "Save the design (background, theme, layout, animation…) by name and switch with one click. Your app arrangement, folders and widgets are not changed."),
+        .widgetCreate:        ("カスタムを作成…", "Create custom…"),
+        .widgetEdit:          ("ウィジェットを編集…", "Edit widget…"),
+        .widgetMissing:       ("不明なウィジェット", "Unknown widget"),
+        .builderTitle:        ("カスタムウィジェット", "Custom Widget"),
+        .builderName:         ("名前", "Name"),
+        .builderSymbol:       ("SFシンボル", "SF Symbol"),
+        .builderSymbolHint:   ("SF Symbol名（例: star.fill）。空欄可。",
+                               "SF Symbol name (e.g. star.fill). Optional."),
+        .builderHeadline:     ("見出し", "Headline"),
+        .builderSubtitle:     ("サブ見出し", "Subtitle"),
+        .builderAccent:       ("アクセント色", "Accent color"),
+        .builderAccentDefault:("デフォルト", "Default"),
+        .builderImage:        ("画像（任意）", "Image (optional)"),
     ]
 }

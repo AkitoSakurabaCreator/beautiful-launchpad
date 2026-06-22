@@ -28,6 +28,13 @@ final class LaunchpadStore: ObservableObject {
     @Published var widgets: [WidgetItem] = []
     /// Per-app tile icon overrides keyed by app/custom id.
     @Published var iconOverrides: [String: String] = [:]
+    /// User-/third-party-defined declarative widget types (referenced by WidgetItem.definitionId).
+    @Published var widgetDefinitions: [WidgetDefinition] = []
+    /// Widget builder overlay state. `editingWidgetDefId == nil` while creating a new one.
+    @Published var showWidgetBuilder = false
+    @Published var editingWidgetDefId: String? = nil
+    /// Page a newly created custom widget is placed on (set when the builder opens).
+    private var pendingWidgetPage: Int = 0
     /// Last pointer location seen during a drag (page container space) — used to drop
     /// an item at an exact spot in free-placement mode.
     private var lastDragPoint: CGPoint = .zero
@@ -118,6 +125,7 @@ final class LaunchpadStore: ObservableObject {
         freePages = persisted?.freePages ?? [:]
         widgets = (persisted?.widgets ?? []).map { $0.normalized() }
         iconOverrides = persisted?.iconOverrides ?? [:]
+        widgetDefinitions = persisted?.widgetDefinitions ?? []
         reconcile(scanned: catalogueSorted(), persisted: persisted)
         sanitizeFreePlacement()
         clampPage()
@@ -352,7 +360,8 @@ final class LaunchpadStore: ObservableObject {
             freePositions: freePositions,
             freePages: freePages,
             widgets: widgets,
-            iconOverrides: iconOverrides
+            iconOverrides: iconOverrides,
+            widgetDefinitions: widgetDefinitions
         )
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: Self.supportFileURL(), options: .atomic)
@@ -418,7 +427,8 @@ final class LaunchpadStore: ObservableObject {
                 freePositions: freePositions,
                 freePages: freePages,
                 widgets: widgets,
-                iconOverrides: iconOverrides
+                iconOverrides: iconOverrides,
+                widgetDefinitions: widgetDefinitions
             ),
             settings: settings
         )
@@ -435,6 +445,7 @@ final class LaunchpadStore: ObservableObject {
         freePages = bundle.layout.freePages
         widgets = bundle.layout.widgets.map { $0.normalized() }
         iconOverrides = bundle.layout.iconOverrides
+        widgetDefinitions = bundle.layout.widgetDefinitions
         applyImportedLayout(bundle.layout)
         sanitizeFreePlacement()
         save()
@@ -524,6 +535,27 @@ final class LaunchpadStore: ObservableObject {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         updateSettings { $0.pageBackgrounds["\(page)"] = PageBackground(kind: .image, colorHex: nil, imagePath: url.path) }
+    }
+
+    func setPageBackgroundVideo(_ page: Int) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings {
+            $0.pageBackgrounds["\(page)"] = PageBackground(kind: .video, colorHex: nil, imagePath: nil, videoPath: url.path)
+        }
+    }
+
+    func setPageBackgroundSlideshow(_ page: Int) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updateSettings {
+            $0.pageBackgrounds["\(page)"] = PageBackground(kind: .slideshow, colorHex: nil, imagePath: nil, slideshowFolder: url.path)
+        }
     }
 
     func clearPageBackground(_ page: Int) {
@@ -1486,6 +1518,103 @@ final class LaunchpadStore: ObservableObject {
     func removeWidget(_ id: String) {
         widgets.removeAll { $0.id == id }
         save()
+    }
+
+    // MARK: - Custom (user-/third-party-defined) widget definitions
+
+    /// Look up a user-defined widget type by id (nil id / unknown id → nil).
+    func widgetDefinition(_ id: String?) -> WidgetDefinition? {
+        guard let id else { return nil }
+        return widgetDefinitions.first { $0.id == id }
+    }
+
+    /// The definition that renders a placed custom widget (nil for built-ins / missing).
+    func widgetDefinition(for widget: WidgetItem) -> WidgetDefinition? {
+        widgetDefinition(widget.definitionId)
+    }
+
+    /// Place an instance of an existing custom definition on a page.
+    func addCustomWidget(_ definitionId: String, page: Int) {
+        var w = WidgetItem(id: "widget-" + UUID().uuidString, kind: .custom, page: page)
+        w.definitionId = definitionId
+        w.w = 0.22; w.h = 0.16
+        let n = Double(widgetsOnPage(page).count % 5)
+        w.x = min(0.85, 0.3 + n * 0.06)
+        w.y = min(0.85, 0.35 + n * 0.05)
+        widgets.append(w.normalized())
+        save()
+    }
+
+    /// Open the builder to create a new custom widget (placed on `page` when saved).
+    func beginCreateWidget(page: Int) {
+        editingWidgetDefId = nil
+        pendingWidgetPage = page
+        showWidgetBuilder = true
+    }
+
+    /// Open the builder to edit an existing definition; placed widgets re-render live.
+    func beginEditWidgetDefinition(_ id: String) {
+        editingWidgetDefId = id
+        showWidgetBuilder = true
+    }
+
+    func closeWidgetBuilder() {
+        showWidgetBuilder = false
+        editingWidgetDefId = nil
+    }
+
+    /// Create a definition from builder fields and immediately place a widget for it.
+    func createWidgetDefinition(name: String, symbol: String, title: String,
+                                subtitle: String, accentHex: String, imagePath: String?) {
+        let def = Self.makeWidgetDefinition(id: "wdef-" + UUID().uuidString, name: name, symbol: symbol,
+                                            title: title, subtitle: subtitle, accentHex: accentHex, imagePath: imagePath)
+        widgetDefinitions.append(def)
+        save()
+        addCustomWidget(def.id, page: pendingWidgetPage)
+    }
+
+    /// Overwrite an existing definition from builder fields (live-updates placed widgets).
+    func updateWidgetDefinition(_ id: String, name: String, symbol: String, title: String,
+                                subtitle: String, accentHex: String, imagePath: String?) {
+        guard let i = widgetDefinitions.firstIndex(where: { $0.id == id }) else { return }
+        widgetDefinitions[i] = Self.makeWidgetDefinition(id: id, name: name, symbol: symbol,
+                                                         title: title, subtitle: subtitle, accentHex: accentHex, imagePath: imagePath)
+        save()
+    }
+
+    /// Delete a definition. Placed widgets referencing it show a "missing" placeholder
+    /// (kept, not silently dropped).
+    func deleteWidgetDefinition(_ id: String) {
+        widgetDefinitions.removeAll { $0.id == id }
+        save()
+    }
+
+    /// Build a declarative definition (vstack of symbol / image / title / subtitle) from fields.
+    private static func makeWidgetDefinition(id: String, name: String, symbol: String, title: String,
+                                             subtitle: String, accentHex: String, imagePath: String?) -> WidgetDefinition {
+        let sym = symbol.trimmingCharacters(in: .whitespaces)
+        let ttl = title.trimmingCharacters(in: .whitespaces)
+        let sub = subtitle.trimmingCharacters(in: .whitespaces)
+        var children: [WidgetNode] = []
+        if !sym.isEmpty { children.append(WidgetNode(type: .symbol, value: sym, size: 30)) }
+        if let p = imagePath, !p.trimmingCharacters(in: .whitespaces).isEmpty {
+            children.append(WidgetNode(type: .image, value: p))
+        }
+        if !ttl.isEmpty { children.append(WidgetNode(type: .text, value: ttl, size: 20, weight: "bold")) }
+        if !sub.isEmpty { children.append(WidgetNode(type: .text, value: sub, size: 13)) }
+        if children.isEmpty {
+            let fallback = name.trimmingCharacters(in: .whitespaces)
+            children.append(WidgetNode(type: .text, value: fallback.isEmpty ? "Widget" : fallback, size: 18, weight: "semibold"))
+        }
+        let layout = WidgetNode(type: .vstack, children: children)
+        let menuSym = !sym.isEmpty ? sym : ((imagePath?.isEmpty == false) ? "photo" : "textformat")
+        let display: String = {
+            let n = name.trimmingCharacters(in: .whitespaces)
+            if !n.isEmpty { return n }
+            if !ttl.isEmpty { return ttl }
+            return "Widget"
+        }()
+        return WidgetDefinition(id: id, name: display, menuSymbol: menuSym, builtin: nil, layout: layout, accent: accentHex)
     }
 
     /// Add an image/video widget, prompting for the file first.

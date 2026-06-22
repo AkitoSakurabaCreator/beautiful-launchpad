@@ -93,6 +93,11 @@ struct LaunchpadView: View {
                 AddEditItemView()
             }
 
+            // Create / edit a user-defined declarative widget.
+            if store.showWidgetBuilder {
+                WidgetBuilderView()
+            }
+
             // First-run onboarding / permissions dialog.
             if store.showOnboarding {
                 OnboardingView()
@@ -110,6 +115,7 @@ struct LaunchpadView: View {
         .animation(store.settings.anim(0.2), value: store.openFolderID)
         .animation(store.settings.anim(0.2), value: store.showSettings)
         .animation(store.settings.anim(0.2), value: store.showItemEditor)
+        .animation(store.settings.anim(0.2), value: store.showWidgetBuilder)
     }
 }
 
@@ -201,10 +207,20 @@ struct PageGrid: View {
             Divider()
             Button(store.t(.widgetImage)) { store.addMediaWidget(.image, page: pageIndex) }
             Button(store.t(.widgetVideo)) { store.addMediaWidget(.video, page: pageIndex) }
+            Divider()
+            ForEach(store.widgetDefinitions) { def in
+                Button { store.addCustomWidget(def.id, page: pageIndex) } label: {
+                    Label(def.name, systemImage: def.menuSymbol)
+                }
+            }
+            Button(store.t(.widgetCreate)) { store.beginCreateWidget(page: pageIndex) }
         }
         Divider()
         Menu(store.t(.pageBackground)) {
             Button(store.t(.pageBgImage)) { store.setPageBackgroundImage(pageIndex) }
+            Button(store.t(.pageBgVideo)) { store.setPageBackgroundVideo(pageIndex) }
+            Button(store.t(.pageBgSlideshow)) { store.setPageBackgroundSlideshow(pageIndex) }
+            Divider()
             ForEach(PageGrid.pageColorPalette, id: \.hex) { c in
                 Button { store.setPageBackgroundColor(pageIndex, hex: c.hex) } label: { Text(c.name) }
             }
