@@ -327,6 +327,10 @@ struct WidgetLayer: View {
     let pageIndex: Int
     let areaSize: CGSize
 
+    /// Named coordinate space (page-local, origin = page top-left) used by the rotation
+    /// handle to read the cursor position in the same space as widget centres.
+    static let coordinateSpace = "widgetPage"
+
     var body: some View {
         ForEach(store.widgetsOnPage(pageIndex)) { w in
             WidgetTileView(widget: w, areaSize: areaSize)
@@ -345,6 +349,7 @@ struct WidgetTileView: View {
     @State private var hovering = false
 
     private var cyber: Bool { store.settings.layoutStyle == .cyber }
+    private var glass: Bool { store.settings.layoutStyle == .glass }
     private var baseW: CGFloat { max(60, widget.w * areaSize.width) }
     private var baseH: CGFloat { max(44, widget.h * areaSize.height) }
 
@@ -357,18 +362,31 @@ struct WidgetTileView: View {
         let cy = widget.y * areaSize.height + dragOffset.height
         let locked = widget.locked
 
-        card(w, h)
-            .overlay(alignment: .bottomTrailing) { if !locked { resizeHandle } }
-            .overlay(alignment: .bottom) { if hovering && !locked { controlBar } }
-            .rotationEffect(.degrees(widget.rotation))
-            .onHover { hovering = $0 }
-            .contextMenu { menuItems }
-        // `.position` MUST be last: any interaction modifier applied *after* it (e.g.
-        // .onHover) attaches to the parent-filling container and would swallow clicks
-        // across the whole page, blocking the icons beneath. Keeping interactions on
-        // the sized card means only the w×h tile is hit-testable; empty space passes
-        // clicks through to the grid (matches how app icons are positioned).
-        .position(x: cx, y: cy)
+        let handleZone: CGFloat = 26   // reserved space ABOVE the card for the handle
+
+        // The handle lives in a zone ABOVE the card but still WITHIN the tile frame, so
+        // it protrudes outside the card yet stays hit-testable. The WHOLE tile (handle +
+        // card + resize/controls) rotates together around the CARD's centre, so every
+        // affordance stays attached to the rotated card (previously only the card rotated,
+        // leaving the handle / resize knob stranded in place).
+        VStack(spacing: 0) {
+            rotationHandleView(zone: handleZone)
+                .opacity(locked ? 0 : 1)
+                .allowsHitTesting(!locked)
+            card(w, h)
+                .overlay(alignment: .bottomTrailing) { if !locked { resizeHandle } }
+                .overlay(alignment: .bottom) { if hovering && !locked && isMedia { controlBar } }
+        }
+        .frame(width: w, height: h + handleZone)
+        // Rotate the whole tile around the CARD centre (not the frame centre, which sits
+        // inside the top handle zone).
+        .rotationEffect(.degrees(widget.rotation),
+                        anchor: UnitPoint(x: 0.5, y: (handleZone + h / 2) / (h + handleZone)))
+        .onHover { hovering = $0 }
+        .contextMenu { menuItems }
+        // Frame includes the top handle zone; shift up so the CARD centre (not the
+        // frame centre) sits at the widget's stored position.
+        .position(x: cx, y: cy - handleZone / 2)
     }
 
     /// The visible card: title bar + content + frame/background/border/shadow.
@@ -392,22 +410,45 @@ struct WidgetTileView: View {
         .frame(width: w, height: h)
         .background(cardBackground)
         .overlay(cardBorder)
-        .shadow(color: transparent ? .clear : (cyber ? CyberPalette.neon.opacity(0.5) : .black.opacity(0.3)),
-                radius: transparent ? 0 : (cyber ? 8 : 4))
+        .shadow(color: transparent ? .clear : shadowColor,
+                radius: transparent ? 0 : (cyber ? 8 : (glass ? (store.settings.usesVideoBackground ? 5 : 14) : 4)),
+                x: 0, y: glass ? (store.settings.usesVideoBackground ? 3 : 8) : 0)
+    }
+
+    private var shadowColor: Color {
+        if cyber { return CyberPalette.neon.opacity(0.5) }
+        if glass { return GlassPalette.coolEdge.opacity(store.settings.usesVideoBackground ? 0.08 : 0.18) }
+        return .black.opacity(0.3)
     }
 
     @ViewBuilder private var cardBackground: some View {
         if !widget.transparent {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill((cyber ? CyberPalette.tile : Color.black).opacity(cyber ? 0.6 : 0.4))
+            if glass {
+                LiquidGlassBackground(
+                    shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                    tint: GlassPalette.coolEdge,
+                    transparency: store.settings.glassTransparency,
+                    reduceLiveBlur: store.settings.usesVideoBackground,
+                    strokeOpacity: 0.34,
+                    shadowOpacity: 0.12
+                )
+            } else {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill((cyber ? CyberPalette.tile : Color.black).opacity(cyber ? 0.6 : 0.4))
+            }
         }
     }
 
     @ViewBuilder private var cardBorder: some View {
         if !widget.transparent {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke((cyber ? CyberPalette.neon : Color.white).opacity(cyber ? 0.85 : 0.18),
-                        lineWidth: cyber ? 1.5 : 1)
+            let glassStrokeOpacity = GlassPalette.adjustedOpacity(
+                0.30,
+                transparency: store.settings.glassTransparency,
+                reduction: 0.35
+            )
+            RoundedRectangle(cornerRadius: glass ? 16 : 14, style: .continuous)
+                .stroke((cyber ? CyberPalette.neon : (glass ? GlassPalette.sheen : Color.white)).opacity(cyber ? 0.85 : (glass ? glassStrokeOpacity : 0.18)),
+                        lineWidth: (cyber || glass) ? 1.5 : 1)
         }
     }
 
@@ -462,6 +503,34 @@ struct WidgetTileView: View {
             }
     }
 
+    /// Grab-to-rotate knob near the top of the widget. Rotation is computed from the
+    /// angle of the cursor around the widget centre (absolute, not incremental), so it
+    /// tracks the pointer smoothly instead of jittering.
+    private func rotationHandleView(zone: CGFloat) -> some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(.white)
+            .frame(width: 24, height: 24)
+            .background(Circle().fill(Color.black.opacity(0.6)))
+            .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1))
+            .opacity(hovering ? 1 : 0.45)
+            // Small visible knob, but a wide transparent grab zone filling the handle
+            // area above the card (it's inside the tile frame, so it stays hit-testable).
+            .frame(width: 80, height: zone, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(coordinateSpace: .named(WidgetLayer.coordinateSpace))
+                    .onChanged { v in
+                        let cx = widget.x * areaSize.width
+                        let cy = widget.y * areaSize.height
+                        var deg = atan2(v.location.y - cy, v.location.x - cx) * 180 / .pi + 90
+                        while deg > 180 { deg -= 360 }
+                        while deg < -180 { deg += 360 }
+                        store.setWidgetRotation(widget.id, deg)
+                    }
+            )
+    }
+
     private var resizeHandle: some View {
         Image(systemName: "arrow.down.right")
             .font(.system(size: 9, weight: .bold))
@@ -487,15 +556,6 @@ struct WidgetTileView: View {
 
     private var controlBar: some View {
         VStack(spacing: 4) {
-            // Rotation fader (all widgets).
-            HStack(spacing: 6) {
-                Image(systemName: "rotate.right")
-                    .font(.system(size: 11)).foregroundColor(.white)
-                Slider(value: Binding(get: { widget.rotation },
-                                      set: { store.setWidgetRotation(widget.id, $0) }),
-                       in: -180...180)
-                    .controlSize(.mini).tint(.white)
-            }
             // Opacity fader (image & video).
             if isMedia {
                 HStack(spacing: 6) {
@@ -523,7 +583,19 @@ struct WidgetTileView: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background {
+            if glass {
+                LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous),
+                                      tint: GlassPalette.coolEdge,
+                                      transparency: store.settings.glassTransparency,
+                                      reduceLiveBlur: store.settings.usesVideoBackground,
+                                      strokeOpacity: 0.34,
+                                      shadowOpacity: 0.10)
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+        }
         .padding(.bottom, 6)
         .padding(.horizontal, 8)
         .padding(.trailing, 14)   // keep clear of the resize handle

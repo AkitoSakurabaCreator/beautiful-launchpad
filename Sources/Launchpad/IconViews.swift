@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A single app tile: icon image plus label. The icon shape follows the chosen
-/// layout style (Classic = native icon, Android = circular, Windows = square tile).
+/// layout style (Classic = native icon, Glass = translucent tile, Android = circular).
 struct AppIconView: View {
     @EnvironmentObject var store: LaunchpadStore
     let app: AppInfo
@@ -13,19 +13,27 @@ struct AppIconView: View {
     private var corner: CGFloat {
         switch style {
         case .classic: return iconSize * 0.24
+        case .glass:   return iconSize * 0.22    // liquid-glass rounded square
         case .android: return iconSize * 0.5     // circle
         case .windows: return iconSize * 0.12    // rounded square tile
         case .cyber:   return iconSize * 0.16    // neon tile
         }
     }
-    private var labelColor: Color { style == .cyber ? CyberPalette.text : .white }
+    private var labelColor: Color {
+        switch style {
+        case .cyber: return CyberPalette.text
+        case .glass: return GlassPalette.sheen
+        default: return .white
+        }
+    }
+    private var displayIcon: NSImage { store.icon(for: app) }
 
     var body: some View {
         VStack(spacing: style == .android ? 8 : 7) {
             ZStack {
                 if highlight {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke((style == .cyber ? CyberPalette.neon : Color.white).opacity(0.9), lineWidth: 3)
+                        .stroke(highlightColor.opacity(0.9), lineWidth: 3)
                         .frame(width: iconSize + 14, height: iconSize + 14)
                 }
                 iconImage
@@ -36,26 +44,53 @@ struct AppIconView: View {
                     .foregroundColor(labelColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)
+                    .shadow(color: style == .glass ? GlassPalette.coolEdge.opacity(0.28) : .black.opacity(0.6),
+                            radius: style == .glass ? 4 : 2, x: 0, y: 1)
                     .frame(maxWidth: iconSize + 26)
             }
         }
         .contentShape(Rectangle())
     }
 
+    private var highlightColor: Color {
+        switch style {
+        case .cyber: return CyberPalette.neon
+        case .glass: return GlassPalette.coolEdge
+        default: return .white
+        }
+    }
+
     @ViewBuilder
     private var iconImage: some View {
         switch style {
         case .classic:
-            Image(nsImage: app.icon)
+            Image(nsImage: displayIcon)
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: iconSize, height: iconSize)
                 .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 3)
+        case .glass:
+            ZStack {
+                LiquidGlassBackground(
+                    shape: RoundedRectangle(cornerRadius: iconSize * 0.22, style: .continuous),
+                    tint: GlassPalette.coolEdge,
+                    transparency: store.settings.glassTransparency,
+                    reduceLiveBlur: store.settings.usesVideoBackground,
+                    strokeOpacity: 0.42,
+                    shadowOpacity: 0.20
+                )
+                Image(nsImage: displayIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: iconSize * 0.68, height: iconSize * 0.68)
+                    .shadow(color: .white.opacity(0.28), radius: 6)
+            }
+            .frame(width: iconSize, height: iconSize)
         case .android:
             // Circular icons (icon fills a circle).
-            Image(nsImage: app.icon)
+            Image(nsImage: displayIcon)
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fill)
@@ -69,7 +104,7 @@ struct AppIconView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: iconSize * 0.1, style: .continuous)
                     .fill(Color.white.opacity(0.16))
-                Image(nsImage: app.icon)
+                Image(nsImage: displayIcon)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
@@ -86,7 +121,7 @@ struct AppIconView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: iconSize * 0.16, style: .continuous)
                     .fill(CyberPalette.tile.opacity(0.6))
-                Image(nsImage: app.icon)
+                Image(nsImage: displayIcon)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
@@ -115,6 +150,7 @@ struct FolderIconView: View {
     private func corner(_ mainCell: CGFloat) -> CGFloat {
         switch store.settings.layoutStyle {
         case .classic: return mainCell * 0.24
+        case .glass:   return mainCell * 0.22
         case .android: return mainCell * 0.5
         case .windows: return mainCell * 0.10
         case .cyber:   return mainCell * 0.12
@@ -130,19 +166,43 @@ struct FolderIconView: View {
         let mainCell = iconSize * 0.92
         let rad = corner(mainCell)
 
-        // Cyber style: dark glass fill + neon accent border + glow (the folder's own
-        // colour, if set, becomes the neon accent; else default cyan).
-        let isCyber = store.settings.layoutStyle == .cyber
+        let style = store.settings.layoutStyle
+        let isCyber = style == .cyber
+        let isGlass = style == .glass
         let accent = folder.colorHex.map { Color(hex: $0) } ?? CyberPalette.neon
+        let glassAccent = folder.colorHex.map { Color(hex: $0) } ?? GlassPalette.coolEdge
         let fillColor = isCyber ? CyberPalette.tile.opacity(0.6)
             : (folder.colorHex.map { Color(hex: $0).opacity(0.55) } ?? Color.white.opacity(0.16))
-        let strokeColor = isCyber ? accent.opacity(0.9) : Color.white.opacity(highlight ? 0.9 : 0.18)
-        let strokeW: CGFloat = isCyber ? 1.5 : (highlight ? 3 : 1)
+        let glassStrokeOpacity = GlassPalette.adjustedOpacity(
+            highlight ? 0.95 : 0.34,
+            transparency: store.settings.glassTransparency,
+            reduction: highlight ? 0.15 : 0.35
+        )
+        let strokeColor = isCyber ? accent.opacity(0.9)
+            : (isGlass ? GlassPalette.sheen.opacity(glassStrokeOpacity) : Color.white.opacity(highlight ? 0.9 : 0.18))
+        let strokeW: CGFloat = (isCyber || isGlass) ? 1.5 : (highlight ? 3 : 1)
 
         VStack(spacing: 7) {
             ZStack {
                 RoundedRectangle(cornerRadius: rad, style: .continuous)
-                    .fill(fillColor)
+                    .fill(isGlass ? Color.clear : fillColor)
+                    .background {
+                        if isGlass {
+                            LiquidGlassBackground(
+                                shape: RoundedRectangle(cornerRadius: rad, style: .continuous),
+                                tint: glassAccent,
+                                transparency: store.settings.glassTransparency,
+                                reduceLiveBlur: store.settings.usesVideoBackground,
+                                materialOpacity: 0.45,
+                                sheenOpacity: 0.10,
+                                tintOpacity: 0.035,
+                                warmOpacity: 0.018,
+                                innerStrokeOpacity: 0.05,
+                                strokeOpacity: 0.18,
+                                shadowOpacity: 0.04
+                            )
+                        }
+                    }
                     .overlay(
                         RoundedRectangle(cornerRadius: rad, style: .continuous)
                             .stroke(strokeColor, lineWidth: strokeW)
@@ -158,7 +218,7 @@ struct FolderIconView: View {
                                 if idx < mini.count {
                                     let cid = mini[idx]
                                     if let app = store.app(cid) {
-                                        Image(nsImage: app.icon)
+                                        Image(nsImage: store.icon(for: app))
                                             .resizable()
                                             .interpolation(.high)
                                             .aspectRatio(contentMode: .fit)
@@ -183,10 +243,11 @@ struct FolderIconView: View {
             if showLabel {
                 Text(folder.name)
                     .font(.system(size: 12.5))
-                    .foregroundColor(isCyber ? CyberPalette.text : .white)
+                    .foregroundColor(isCyber ? CyberPalette.text : (isGlass ? GlassPalette.sheen : .white))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)
+                    .shadow(color: isGlass ? GlassPalette.coolEdge.opacity(0.28) : .black.opacity(0.6),
+                            radius: isGlass ? 4 : 2, x: 0, y: 1)
                     .frame(maxWidth: iconSize + 26)
             }
         }
